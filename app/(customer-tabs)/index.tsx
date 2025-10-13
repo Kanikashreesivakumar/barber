@@ -79,7 +79,7 @@ export default function CustomerHomeScreen() {
           <Scissors size={40} stroke="#FFFFFF" strokeWidth={2} />
           <Text style={styles.headerTitle}>BarberSlot</Text>
         </Animatable.View>
-        <Animatable.Text animation="fadeInUp" delay={500} style={styles.headerSubtitle}>Find and book your perfect cut</Animatable.Text>
+        <Animatable.Text animation="fadeInUp" delay={500} style={styles.headerSubtitle}>Find and book your perfect </Animatable.Text>
       </Animated.View>
 
       <Animatable.View animation="slideInUp" duration={1000} style={styles.searchContainer}>

@@ -13,7 +13,7 @@ export default function CustomerProfileScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={styles.headerTitle}>Profiles</Text>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
