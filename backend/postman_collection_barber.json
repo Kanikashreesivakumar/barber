@@ -1,0 +1,83 @@
+{
+  "info": {
+    "_postman_id": "barber-slot-collection",
+    "name": "BarberSlot Backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Barbers",
+      "item": [
+        {
+          "name": "Get Barbers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/barbers"
+          }
+        },
+        {
+          "name": "Create Barber",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"name\": \"Royal Cuts\", \"email\": \"owner@royalcuts.com\", \"phone\": \"+91-9876543210\", \"shopName\": \"Royal Cuts\" }"
+            },
+            "url": "{{baseUrl}}/barbers"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bookings",
+      "item": [
+        {
+          "name": "Get Bookings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/bookings" }
+        },
+        {
+          "name": "Create Booking",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"customerName\": \"Amit Sharma\", \"customerPhone\": \"+919876543210\", \"barber\": \"<BARBER_ID>\", \"startTime\": \"2025-10-13T10:30:00.000Z\" }"
+            },
+            "url": "{{baseUrl}}/bookings"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Queue",
+      "item": [
+        { "name": "Get Queue for Barber", "request": { "method": "GET", "url": "{{baseUrl}}/queue/barber/<BARBER_ID>" } },
+        { "name": "Join Queue", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"barber\": \"<BARBER_ID>\", \"customerName\": \"Amit Sharma\", \"customerPhone\": \"+919876543210\" }" }, "url": "{{baseUrl}}/queue" } },
+        { "name": "Leave Queue", "request": { "method": "POST", "url": "{{baseUrl}}/queue/leave/<QUEUE_ID>" } }
+      ]
+    },
+    {
+      "name": "Favorites",
+      "item": [
+        { "name": "List Favorites", "request": { "method": "GET", "url": "{{baseUrl}}/favorites/<CUSTOMER_ID>" } },
+        { "name": "Add Favorite", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"customerId\": \"user-123\", \"barber\": \"<BARBER_ID>\" }" }, "url": "{{baseUrl}}/favorites" } },
+        { "name": "Remove Favorite", "request": { "method": "DELETE", "url": "{{baseUrl}}/favorites/<FAV_ID>" } }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        { "name": "List Notifications", "request": { "method": "GET", "url": "{{baseUrl}}/notifications/<CUSTOMER_ID>" } },
+        { "name": "Mark Sent", "request": { "method": "POST", "url": "{{baseUrl}}/notifications/sent/<NOTIF_ID>" } }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" }
+  ]
+}
