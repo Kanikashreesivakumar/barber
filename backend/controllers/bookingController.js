@@ -11,6 +11,27 @@ exports.getBookings = async (req, res) => {
   }
 };
 
+exports.getBookingsByBarber = async (req, res) => {
+  try {
+    const { barberId } = req.params;
+    
+    // Validate barber ID format
+    if (!mongoose.Types.ObjectId.isValid(barberId)) {
+      return res.status(400).json({ message: 'Invalid barber ID format' });
+    }
+
+    const bookings = await Booking.find({ barber: barberId })
+      .populate('barber')
+      .sort({ startTime: 1 }); // Sort by appointment time
+
+    console.log(`Found ${bookings.length} bookings for barber ${barberId}`);
+    res.json(bookings);
+  } catch (err) {
+    console.error('getBookingsByBarber error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
 exports.createBooking = async (req, res) => {
   try {
     // Basic input validation
