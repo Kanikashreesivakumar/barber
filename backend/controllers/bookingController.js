@@ -93,3 +93,30 @@ exports.createBooking = async (req, res) => {
     res.status(400).json({ message: err.message || 'Failed to create booking' });
   }
 };
+
+exports.updateBooking = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    
+    // Validate booking ID format
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ message: 'Invalid booking ID format' });
+    }
+
+    const booking = await Booking.findByIdAndUpdate(
+      bookingId,
+      req.body,
+      { new: true, runValidators: true }
+    ).populate('barber');
+
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    console.log(`Updated booking ${bookingId}:`, req.body);
+    res.json(booking);
+  } catch (err) {
+    console.error('updateBooking error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
