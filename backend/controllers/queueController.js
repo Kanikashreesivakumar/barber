@@ -1,5 +1,6 @@
 const QueueEntry = require('../models/QueueEntry');
 
+
 exports.getQueueForBarber = async (req, res) => {
   try {
     const barberId = req.params.barberId;
