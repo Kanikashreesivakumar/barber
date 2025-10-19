@@ -1,53 +1,184 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, Check, X, Star, User } from 'lucide-react';
-import { supabase, Appointment, Review, Barber } from '../lib/supabase';
+import { Appointment, Review } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 
+type MongoBarber = {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  shopName?: string;
+  specialization?: string;
+  rating?: number;
+  experienceYears?: number;
+  is_available?: boolean;
+  createdAt?: string;
+};
+
 export function BarberDashboard() {
+  // Prefer environment-defined API URL; fall back to same host:5000; finally localhost
+  const API_BASE_URL =
+    (import.meta as any)?.env?.VITE_API_URL ||
+    (typeof window !== 'undefined'
+      ? `${window.location.protocol}//${window.location.hostname}:5000`
+      : 'http://localhost:5000');
   const { user } = useAuth();
   const { addNotification } = useNotification();
+  console.log('BarberDashboard mounted, user=', user);
 
-  const [barberProfile, setBarberProfile] = useState<Barber | null>(null);
+  const [barberProfile, setBarberProfile] = useState<MongoBarber | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed'>('all');
+  const [todaysCount, setTodaysCount] = useState(0);
+
+  // Form state for creating/updating barber details
+  const [formName, setFormName] = useState('');
+  const [formPhone, setFormPhone] = useState('');
+  const [formShopName, setFormShopName] = useState('');
+  const [formSpecialization, setFormSpecialization] = useState('');
+  const [formExperienceYears, setFormExperienceYears] = useState<number | ''>('');
+  // UI state for view/edit
+  const [showDetails, setShowDetails] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    loadBarberData();
-  }, []);
+    // Re-run when auth is ready; avoid fetching too early
+    if (user?.email) {
+      setLoading(true);
+      loadBarberData();
+    } else {
+      setLoading(false);
+      setAppointments([]);
+    }
+  }, [user?.email]);
 
   async function loadBarberData() {
     try {
-      const { data: barberData, error: barberError } = await supabase
-        .from('barbers')
-        .select('*')
-        .eq('user_id', user?.id)
-        .maybeSingle();
+      console.log('Loading barber data for user:', user?.id, 'email:', user?.email);
 
-      if (barberError) throw barberError;
-      setBarberProfile(barberData);
+      // Fetch barber profile from MongoDB backend by email
+      let mongoBarber: MongoBarber | null = null;
+      if (user?.email) {
+        const barberResponse = await fetch(`${API_BASE_URL}/api/barbers/email/${encodeURIComponent(user.email)}`);
+        if (barberResponse.ok) {
+          const data: MongoBarber = await barberResponse.json();
+          mongoBarber = data;
+          setBarberProfile(data);
+          // Prefill form for editing
+          setFormName(data?.name || '');
+          setFormPhone(data?.phone || '');
+          setFormShopName(data?.shopName || '');
+          setFormSpecialization(data?.specialization || '');
+          setFormExperienceYears(typeof data?.experienceYears === 'number' ? (data.experienceYears as number) : '');
+        } else if (barberResponse.status === 404) {
+          console.warn('No barber profile found for this user');
+          setBarberProfile(null);
+        } else {
+          console.error('Failed to fetch barber profile:', await barberResponse.text());
+          setBarberProfile(null);
+        }
+      }
 
-      if (barberData) {
-        const { data: appointmentsData, error: appointmentsError } = await supabase
-          .from('appointments')
-          .select('*, customer:profiles!appointments_customer_id_fkey(*), service:services(*)')
-          .eq('barber_id', barberData.id)
-          .order('appointment_date', { ascending: true })
-          .order('start_time', { ascending: true });
+      // Fetch appointments from MongoDB backend by barber ID
+      try {
+        console.log('Fetching appointments from MongoDB backend...');
+        if (mongoBarber) {
+          console.log('Found MongoDB barber:', mongoBarber);
+          
+          // Fetch bookings for this barber by ID (bookings reference barber ObjectId)
+          const ts = Date.now();
+          const appointmentsResponse = await fetch(`${API_BASE_URL}/api/bookings/barber/${mongoBarber._id}?t=${ts}`);
+          
+          if (appointmentsResponse.ok) {
+            const mongoAppointments = await appointmentsResponse.json();
+            console.log('MongoDB appointments fetched:', mongoAppointments);
+            
+            // Transform MongoDB booking document to frontend Appointment shape
+            // Booking schema: customerName, serviceName, servicePrice, startTime, endTime, status
+            const transformedAppointments = mongoAppointments.map((booking: any) => ({
+              id: booking._id,
+              customer_id: booking.customerId || booking.customerEmail || '',
+              barber_id: mongoBarber._id,
+              service_id: null,
+              appointment_date: booking.startTime ? new Date(booking.startTime).toISOString().split('T')[0] : '',
+              start_time: booking.startTime ? new Date(booking.startTime).toTimeString().slice(0, 5) : '',
+              end_time: booking.endTime ? new Date(booking.endTime).toTimeString().slice(0, 5) : '',
+              status: (booking.status || 'pending').toLowerCase(),
+              payment_status: 'pending',
+              payment_amount: booking.servicePrice || 0,
+              notes: '',
+              created_at: booking.createdAt,
+              updated_at: booking.updatedAt || booking.createdAt,
+              customer: { full_name: booking.customerName || 'Unknown Customer' },
+              service: { name: booking.serviceName || 'Haircut' }
+            }));
+            
+            setAppointments(transformedAppointments);
+            console.log('Appointments set:', transformedAppointments.length);
 
-        if (appointmentsError) throw appointmentsError;
-        setAppointments(appointmentsData || []);
+            // Compute today's count using local time boundaries
+            try {
+              const start = new Date();
+              start.setHours(0, 0, 0, 0);
+              const end = new Date();
+              end.setHours(23, 59, 59, 999);
+              const todays = (mongoAppointments || []).filter((b: any) => {
+                if (!b.startTime) return false;
+                const t = new Date(b.startTime).getTime();
+                const st = (b.status || '').toLowerCase();
+                return t >= start.getTime() && t <= end.getTime() && st !== 'cancelled';
+              });
+              setTodaysCount(todays.length);
+            } catch (e) {
+              console.warn('Failed computing today count', e);
+              setTodaysCount(0);
+            }
+          } else {
+            console.error('Failed to fetch appointments:', appointmentsResponse.statusText);
+            addNotification(`Failed to fetch appointments: ${appointmentsResponse.status} ${appointmentsResponse.statusText}`, 'error');
+            setAppointments([]);
+            setTodaysCount(0);
+          }
+        } else {
+          console.warn('MongoDB barber not found, no appointments to display');
+          setAppointments([]);
+          setTodaysCount(0);
+        }
+      } catch (fetchError) {
+        console.error('Error fetching MongoDB appointments:', fetchError);
+        addNotification('Error fetching appointments from backend. Check API URL and server status.', 'error');
+        setAppointments([]);
+        setTodaysCount(0);
+      }
 
-        const { data: reviewsData, error: reviewsError } = await supabase
-          .from('reviews')
-          .select('*, customer:profiles!reviews_customer_id_fkey(*)')
-          .eq('barber_id', barberData.id)
-          .order('created_at', { ascending: false });
-
-        if (reviewsError) throw reviewsError;
-        setReviews(reviewsData || []);
+      // Fetch reviews from backend (MongoDB)
+      try {
+        if (mongoBarber) {
+          const r = await fetch(`${API_BASE_URL}/api/reviews/barber/${mongoBarber._id}`);
+          if (r.ok) {
+            const list = await r.json();
+            const mapped = (list || []).map((rv: any) => ({
+              id: rv._id,
+              appointment_id: rv.appointment,
+              customer_id: rv.customerId || rv.customerEmail,
+              barber_id: String(rv.barber),
+              rating: rv.rating,
+              comment: rv.comment,
+              created_at: rv.createdAt,
+              customer: { full_name: rv.customerName || rv.customerEmail || 'Customer' },
+            }));
+            setReviews(mapped);
+          } else {
+            setReviews([]);
+          }
+        }
+      } catch (reviewError) {
+        console.error('Error in reviews fetch:', reviewError);
+        setReviews([]);
       }
     } catch (error) {
       console.error('Error loading barber data:', error);
@@ -56,36 +187,74 @@ export function BarberDashboard() {
     }
   }
 
+  // removed unused handleUploadDesign
+
+  async function allocateSlot(appointmentId: string, time: string) {
+    try {
+      // Preserve original appointment date when updating time
+      const appt = appointments.find((a) => a.id === appointmentId);
+      const datePart = appt?.appointment_date || new Date().toISOString().split('T')[0];
+      const newStart = new Date(`${datePart}T${time}:00`);
+      // Update both start_time and status in MongoDB
+  const response = await fetch(`${API_BASE_URL}/api/bookings/${appointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          startTime: newStart,
+          status: 'confirmed' 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to allocate slot');
+      }
+
+      addNotification('Slot allocated', 'success');
+      loadBarberData();
+    } catch (error: any) {
+      console.error('Error allocating slot:', error);
+      addNotification(error.message || 'Failed to allocate slot', 'error');
+    }
+  }
+
   async function updateAppointmentStatus(appointmentId: string, status: string) {
     try {
-      const { error } = await supabase
-        .from('appointments')
-        .update({ status })
-        .eq('id', appointmentId);
+      // Update in MongoDB
+  const response = await fetch(`${API_BASE_URL}/api/bookings/${appointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        throw new Error('Failed to update appointment');
+      }
 
       addNotification(`Appointment ${status}`, 'success');
       loadBarberData();
     } catch (error: any) {
+      console.error('Error updating appointment:', error);
       addNotification(error.message || 'Failed to update appointment', 'error');
     }
   }
 
   async function toggleAvailability() {
     if (!barberProfile) return;
-
     try {
-      const { error } = await supabase
-        .from('barbers')
-        .update({ is_available: !barberProfile.is_available })
-        .eq('id', barberProfile.id);
-
-      if (error) throw error;
-
-      setBarberProfile({ ...barberProfile, is_available: !barberProfile.is_available });
+  const response = await fetch(`${API_BASE_URL}/api/barbers/${barberProfile._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_available: !barberProfile.is_available })
+      });
+      if (!response.ok) throw new Error('Failed to update availability');
+      const updated = await response.json();
+      setBarberProfile(updated);
       addNotification(
-        `You are now ${!barberProfile.is_available ? 'available' : 'unavailable'}`,
+        `You are now ${updated.is_available ? 'available' : 'unavailable'}`,
         'success'
       );
     } catch (error: any) {
@@ -93,13 +262,54 @@ export function BarberDashboard() {
     }
   }
 
+  async function saveBarberDetails() {
+    if (!user?.email) {
+      addNotification('You must be signed in to save details', 'error');
+      return;
+    }
+    try {
+      const payload = {
+        name: formName || user.email.split('@')[0],
+        email: user.email,
+        phone: formPhone,
+        shopName: formShopName,
+        specialization: formSpecialization,
+        experienceYears: typeof formExperienceYears === 'number' ? formExperienceYears : parseInt(String(formExperienceYears || 0), 10)
+      };
+  const response = await fetch(`${API_BASE_URL}/api/barbers/email/${encodeURIComponent(user.email)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || 'Failed to save details');
+      }
+      const saved = await response.json();
+      setBarberProfile(saved);
+      addNotification('Barber details saved', 'success');
+      // reload appointments for this barber
+      await loadBarberData();
+    } catch (err: any) {
+      console.error('saveBarberDetails error:', err);
+      addNotification(err.message || 'Failed to save details', 'error');
+    }
+  }
+
   const filteredAppointments = appointments.filter(
     (apt) => filter === 'all' || apt.status === filter
   );
 
-  const todayAppointments = appointments.filter(
-    (apt) => apt.appointment_date === new Date().toISOString().split('T')[0] && apt.status !== 'cancelled'
-  );
+  // today count is computed from raw booking timestamps (see loadBarberData)
+
+  // Derived metrics for dashboard summaries
+  const totalAppointments = appointments.length;
+  const pendingCount = appointments.filter(a => a.status === 'pending').length;
+  const confirmedCount = appointments.filter(a => a.status === 'confirmed').length;
+  const completedCount = appointments.filter(a => a.status === 'completed').length;
+  const avgRating = reviews.length
+    ? (reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length)
+    : 0;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -124,7 +334,59 @@ export function BarberDashboard() {
     );
   }
 
-  return (
+  if (!barberProfile) {
+    // Show create barber profile form when none exists
+    return (
+      <div className="min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-8 shadow-lg w-full max-w-2xl">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
+              <User className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Create Barber Profile</h3>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">Fill your details to appear in bookings and manage appointments</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label>
+              <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Your full name" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Email</label>
+              <input className="w-full p-3 border rounded-lg bg-gray-100 dark:bg-gray-700" value={user?.email || ''} readOnly />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Phone</label>
+              <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="Phone number" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Shop Name</label>
+              <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formShopName} onChange={(e) => setFormShopName(e.target.value)} placeholder="Your shop name" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Specialization</label>
+              <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formSpecialization} onChange={(e) => setFormSpecialization(e.target.value)} placeholder="e.g., Fades, Classic Cuts" />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Experience (years)</label>
+              <input type="number" className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formExperienceYears} onChange={(e) => setFormExperienceYears(e.target.value === '' ? '' : Number(e.target.value))} placeholder="0" />
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button onClick={saveBarberDetails} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700">Save Profile</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+    // --- Barber Details Card with View/Edit ---
+    return (
     <div className="min-h-[calc(100vh-4rem)] bg-gray-50 dark:bg-gray-900 py-8 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
@@ -132,7 +394,7 @@ export function BarberDashboard() {
           <p className="text-gray-600 dark:text-gray-400">Manage your schedule and appointments</p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
@@ -141,8 +403,9 @@ export function BarberDashboard() {
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Rating</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                  {barberProfile?.rating.toFixed(1) || '0.0'}
+                  {avgRating.toFixed(1)}
                 </p>
+                <p className="text-xs text-gray-500 dark:text-gray-500">{reviews.length} review{reviews.length === 1 ? '' : 's'}</p>
               </div>
             </div>
           </div>
@@ -154,7 +417,7 @@ export function BarberDashboard() {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Today's Appointments</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">{todayAppointments.length}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{todaysCount}</p>
               </div>
             </div>
           </div>
@@ -179,12 +442,105 @@ export function BarberDashboard() {
               </button>
             </div>
           </div>
+
+          {/* Appointments Summary */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg">
+            <div className="flex items-center gap-4">
+              <div>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Appointments</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalAppointments}</p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Pending</span>
+                <span className="px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 text-xs font-medium">{pendingCount}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Confirmed</span>
+                <span className="px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs font-medium">{confirmedCount}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Completed</span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs font-medium">{completedCount}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600 dark:text-gray-400">Today</span>
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 text-xs font-medium">{todaysCount}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Barber Details Card with View/Edit toggle */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg mb-8">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Your Barber Details</h2>
+          {!showDetails && !editing && (
+            <button onClick={() => setShowDetails(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg mb-4">View Details</button>
+          )}
+          {showDetails && !editing && (
+            <div>
+              <div className="grid gap-4 md:grid-cols-2 mb-4">
+                <div><span className="font-semibold">Name:</span> {barberProfile.name}</div>
+                <div><span className="font-semibold">Email:</span> {barberProfile.email}</div>
+                <div><span className="font-semibold">Phone:</span> {barberProfile.phone || '-'}</div>
+                <div><span className="font-semibold">Shop Name:</span> {barberProfile.shopName || '-'}</div>
+                <div><span className="font-semibold">Specialization:</span> {barberProfile.specialization || '-'}</div>
+                <div><span className="font-semibold">Experience (years):</span> {barberProfile.experienceYears ?? '-'}</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(true)} className="px-4 py-2 bg-amber-600 text-white rounded-lg">Edit</button>
+                <button onClick={() => setShowDetails(false)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg">Close</button>
+              </div>
+            </div>
+          )}
+          {editing && (
+            <div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Name</label>
+                  <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formName} onChange={(e) => setFormName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Email</label>
+                  <input className="w-full p-3 border rounded-lg bg-gray-100 dark:bg-gray-700" value={barberProfile.email} readOnly />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Phone</label>
+                  <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formPhone} onChange={(e) => setFormPhone(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Shop Name</label>
+                  <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formShopName} onChange={(e) => setFormShopName(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Specialization</label>
+                  <input className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formSpecialization} onChange={(e) => setFormSpecialization(e.target.value)} />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-1">Experience (years)</label>
+                  <input type="number" className="w-full p-3 border rounded-lg bg-white dark:bg-gray-900" value={formExperienceYears} onChange={(e) => setFormExperienceYears(e.target.value === '' ? '' : Number(e.target.value))} />
+                </div>
+              </div>
+              <div className="mt-4 flex gap-2 justify-end">
+                <button onClick={async () => { await saveBarberDetails(); setEditing(false); setShowDetails(true); }} className="px-4 py-2 bg-amber-600 text-white rounded-lg">Save Changes</button>
+                <button onClick={() => setEditing(false)} className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg">Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Appointments</h2>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              <button
+                onClick={async () => { setLoading(true); await loadBarberData(); }}
+                className="px-3 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                title="Refresh appointments"
+              >
+                Refresh
+              </button>
               {(['all', 'pending', 'confirmed', 'completed'] as const).map((status) => (
                 <button
                   key={status}
@@ -258,6 +614,13 @@ export function BarberDashboard() {
                           <X className="w-4 h-4" />
                           Reject
                         </button>
+                        <div className="flex items-center ml-2">
+                          <input placeholder="HH:MM" className="p-2 border rounded-l-md" id={`time-${appointment.id}`} />
+                          <button onClick={() => {
+                            const el = document.getElementById(`time-${appointment.id}`) as HTMLInputElement | null;
+                            if (el && el.value) allocateSlot(appointment.id, el.value);
+                          }} className="px-3 py-2 bg-amber-600 text-white rounded-r-md">Allocate</button>
+                        </div>
                       </div>
                     )}
 
@@ -270,6 +633,8 @@ export function BarberDashboard() {
                       </button>
                     )}
                   </div>
+
+                  {/* Upload Design section removed */}
                 </div>
               ))}
             </div>

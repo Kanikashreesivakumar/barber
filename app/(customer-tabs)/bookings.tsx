@@ -40,11 +40,11 @@ export default function BookingsScreen() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <Clock size={16} color="#673AB7" strokeWidth={2} />;
+        return <Clock size={16} stroke="#673AB7" strokeWidth={2} />;
       case 'completed':
-        return <CheckCircle size={16} color="#4CAF50" strokeWidth={2} />;
+        return <CheckCircle size={16} stroke="#4CAF50" strokeWidth={2} />;
       case 'cancelled':
-        return <XCircle size={16} color="#F44336" strokeWidth={2} />;
+        return <XCircle size={16} stroke="#F44336" strokeWidth={2} />;
       default:
         return null;
     }
@@ -102,7 +102,7 @@ export default function BookingsScreen() {
             </View>
 
             <View style={styles.bookingInfo}>
-              <MapPin size={16} color="#757575" strokeWidth={2} />
+              <MapPin size={16} stroke="#757575" strokeWidth={2} />
               <Text style={styles.landmark}>{booking.landmark}</Text>
             </View>
 
@@ -129,7 +129,7 @@ export default function BookingsScreen() {
 
         {(activeTab === 'upcoming' ? upcomingBookings : historyBookings).length === 0 && (
           <View style={styles.emptyState}>
-            <Clock size={48} color="#BDBDBD" strokeWidth={2} />
+            <Clock size={48} color="#090505ff" strokeWidth={2} />
             <Text style={styles.emptyTitle}>
               {activeTab === 'upcoming' ? 'No upcoming bookings' : 'No booking history'}
             </Text>

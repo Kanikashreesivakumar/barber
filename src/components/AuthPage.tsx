@@ -24,12 +24,20 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
 
     try {
       if (isSignUp) {
+        // create account and sign in automatically
         await signUp(email, password, fullName, role);
-        addNotification('Account created successfully! Please sign in.', 'success');
-        setIsSignUp(false);
-        setEmail('');
-        setPassword('');
-        setFullName('');
+        try {
+          await signIn(email, password);
+          addNotification('Account created and signed in successfully!', 'success');
+          onSuccess();
+        } catch (signinErr) {
+          // If automatic sign-in fails (email confirm required), prompt user to sign in
+          addNotification('Account created. Please confirm your email or sign in.', 'info');
+          setIsSignUp(false);
+          setEmail('');
+          setPassword('');
+          setFullName('');
+        }
       } else {
         await signIn(email, password);
         addNotification('Signed in successfully!', 'success');

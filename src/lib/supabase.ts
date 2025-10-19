@@ -60,6 +60,9 @@ export type Appointment = {
   barber?: Barber;
   service?: Service;
   customer?: Profile;
+  seatNumber?: number | null;
+  queuePosition?: number | null;
+  estimatedWait?: number | null; // minutes
 };
 
 export type Review = {

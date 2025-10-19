@@ -26,7 +26,7 @@ export function Navbar({ currentPage, onNavigate }: NavbarProps) {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center gap-8">
             <button
-              onClick={() => onNavigate('home')}
+              onClick={() => onNavigate(profile?.role === 'barber' ? 'dashboard' : 'home')}
               className="flex items-center gap-2 text-2xl font-bold text-gray-900 dark:text-white transition-colors"
             >
               <Scissors className="w-8 h-8 text-amber-600" />
@@ -37,17 +37,19 @@ export function Navbar({ currentPage, onNavigate }: NavbarProps) {
 
             {user && (
               <div className="hidden md:flex items-center gap-1">
-                <button
-                  onClick={() => onNavigate('home')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                    currentPage === 'home'
-                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-300'
-                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <Home className="w-4 h-4" />
-                  <span className="font-medium">Home</span>
-                </button>
+                {profile?.role !== 'barber' && (
+                  <button
+                    onClick={() => onNavigate('home')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                      currentPage === 'home'
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-300'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <Home className="w-4 h-4" />
+                    <span className="font-medium">Home</span>
+                  </button>
+                )}
 
                 {profile?.role === 'customer' && (
                   <button

@@ -1,8 +1,28 @@
 import { useState, useEffect } from 'react';
 import { CreditCard, Check, Download } from 'lucide-react';
-import { supabase, Appointment } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+
+// MongoDB Booking type
+interface Booking {
+  _id: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone?: string;
+  barber: {
+    _id: string;
+    name: string;
+    email: string;
+    shopName?: string;
+  };
+  startTime: string;
+  endTime?: string;
+  status: string;
+  service?: string;
+  servicePrice?: number;
+  serviceDuration?: number;
+  createdAt?: string;
+}
 
 type PaymentPageProps = {
   onNavigate: (page: string) => void;
@@ -12,7 +32,7 @@ export function PaymentPage({ onNavigate }: PaymentPageProps) {
   const { user } = useAuth();
   const { addNotification } = useNotification();
 
-  const [appointment, setAppointment] = useState<Appointment | null>(null);
+  const [appointment, setAppointment] = useState<Booking | null>(null);
   const [cardNumber, setCardNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [cvv, setCvv] = useState('');
@@ -26,19 +46,18 @@ export function PaymentPage({ onNavigate }: PaymentPageProps) {
 
   async function loadLatestAppointment() {
     try {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*, barber:barbers(*, profile:profiles(*)), service:services(*)')
-        .eq('customer_id', user?.id)
-        .eq('payment_status', 'pending')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) throw error;
-      setAppointment(data);
+      // Fetch latest pending booking for this user from backend
+      const response = await fetch(`http://localhost:5000/api/bookings?customerEmail=${encodeURIComponent(user?.email || '')}&status=pending`);
+      if (!response.ok) throw new Error('Failed to load appointment');
+      const bookings = await response.json();
+      if (bookings && bookings.length > 0) {
+        setAppointment(bookings[0]);
+      } else {
+        setAppointment(null);
+      }
     } catch (error) {
       console.error('Error loading appointment:', error);
+      setAppointment(null);
     }
   }
 
@@ -54,12 +73,13 @@ export function PaymentPage({ onNavigate }: PaymentPageProps) {
 
     setTimeout(async () => {
       try {
-        const { error } = await supabase
-          .from('appointments')
-          .update({ payment_status: 'paid', status: 'confirmed' })
-          .eq('id', appointment.id);
-
-        if (error) throw error;
+        // Update booking status to paid/confirmed in backend
+        const response = await fetch(`http://localhost:5000/api/bookings/${appointment._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'confirmed' })
+        });
+        if (!response.ok) throw new Error('Failed to update payment status');
 
         setPaymentComplete(true);
         addNotification('Payment successful! Appointment confirmed.', 'success');
@@ -77,14 +97,14 @@ BarberSlot Receipt
 ==================
 
 Date: ${new Date().toLocaleDateString()}
-Appointment ID: ${appointment?.id}
+Appointment ID: ${appointment?._id}
 
-Barber: ${appointment?.barber?.profile?.full_name}
-Service: ${appointment?.service?.name}
-Date: ${appointment?.appointment_date}
-Time: ${appointment?.start_time}
+Barber: ${appointment?.barber?.name}
+Service: ${appointment?.service}
+Date: ${appointment?.startTime ? new Date(appointment.startTime).toLocaleDateString() : ''}
+Time: ${appointment?.startTime ? new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
 
-Amount Paid: $${appointment?.payment_amount}
+Amount Paid: $${appointment?.servicePrice}
 
 Thank you for choosing BarberSlot!
     `.trim();
@@ -93,7 +113,7 @@ Thank you for choosing BarberSlot!
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `receipt-${appointment?.id}.txt`;
+    link.download = `receipt-${appointment?._id}.txt`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -130,19 +150,19 @@ Thank you for choosing BarberSlot!
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Barber:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{appointment.barber?.profile?.full_name}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{appointment.barber?.name}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Service:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{appointment.service?.name}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{appointment.service}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Date:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{appointment.appointment_date}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{new Date(appointment.startTime).toLocaleDateString()}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Time:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{appointment.start_time}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
             </div>
           </div>
@@ -253,7 +273,7 @@ Thank you for choosing BarberSlot!
                   disabled={processing}
                   className="w-full py-3 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {processing ? 'Processing...' : `Pay $${appointment.payment_amount}`}
+                  {processing ? 'Processing...' : `Pay $${appointment.servicePrice}`}
                 </button>
               </div>
             </form>
@@ -270,29 +290,29 @@ Thank you for choosing BarberSlot!
               <div className="space-y-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Barber</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{appointment.barber?.profile?.full_name}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{appointment.barber?.name}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Service</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{appointment.service?.name}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{appointment.service}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Date</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{appointment.appointment_date}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{new Date(appointment.startTime).toLocaleDateString()}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Time</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{appointment.start_time}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Duration</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{appointment.service?.duration_minutes} min</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{appointment.serviceDuration} min</span>
                 </div>
 
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <div className="flex justify-between">
                     <span className="text-lg font-bold text-gray-900 dark:text-white">Total</span>
-                    <span className="text-2xl font-bold text-amber-600">${appointment.payment_amount}</span>
+                    <span className="text-2xl font-bold text-amber-600">${appointment.servicePrice}</span>
                   </div>
                 </div>
               </div>

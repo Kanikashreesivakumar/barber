@@ -1,8 +1,27 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, DollarSign, User, ChevronLeft, ChevronRight } from 'lucide-react';
-import { supabase, Barber, Service } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
+
+// Define types for MongoDB data
+type Barber = {
+  _id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  shopName?: string;
+  specialization?: string;
+  rating?: number;
+  experienceYears?: number;
+};
+
+type Service = {
+  _id: string;
+  name: string;
+  description: string;
+  duration_minutes: number;
+  price: number;
+};
 
 type BookingPageProps = {
   onNavigate: (page: string) => void;
@@ -24,33 +43,79 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
   useEffect(() => {
     loadBarbers();
     loadServices();
+    // Prefill from pending booking (e.g., from designs)
+    try {
+      const pending = localStorage.getItem('pendingBooking');
+      if (pending) {
+        const parsed = JSON.parse(pending);
+        if (parsed.barberId) {
+          // loadBarbers will set barbers; select when available
+          // we'll set selectedBarber after barbers load
+          setTimeout(() => {
+            const found = (window as any).barbersLocal?.find((b: any) => b._id === parsed.barberId);
+            if (found) setSelectedBarber(found);
+          }, 600);
+        }
+        if (parsed.serviceId) {
+          setSelectedService(services.find((s) => s._id === parsed.serviceId) || null);
+        }
+      }
+    } catch (e) {
+      console.warn('No pending booking to prefill', e);
+    }
   }, []);
 
   async function loadBarbers() {
     try {
-      const { data, error } = await supabase
-        .from('barbers')
-        .select('*, profile:profiles!barbers_user_id_fkey(*)')
-        .eq('is_available', true);
-
-      if (error) throw error;
+      const response = await fetch('http://localhost:5000/api/barbers');
+      if (!response.ok) {
+        throw new Error('Failed to load barbers');
+      }
+      const data = await response.json();
       setBarbers(data || []);
+      // expose temporarily for prefill lookup
+      (window as any).barbersLocal = data || [];
     } catch (error) {
       console.error('Error loading barbers:', error);
+      addNotification('Failed to load barbers', 'error');
     }
   }
 
   async function loadServices() {
     try {
-      const { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      setServices(data || []);
+      console.log('🔄 Loading services from backend...');
+      const response = await fetch('http://localhost:5000/api/services');
+      console.log('📡 Services response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load services');
+      }
+      const data = await response.json();
+      console.log('✅ Services loaded:', data);
+      
+      // If no services from backend, use fallback
+      if (!data || data.length === 0) {
+        console.log('⚠️ No services in database, using fallback services');
+        const fallbackServices: Service[] = [
+          { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 25 },
+          { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 15 },
+          { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 35 },
+        ];
+        setServices(fallbackServices);
+        addNotification('Using default services. Please seed the database.', 'info');
+      } else {
+        setServices(data);
+      }
     } catch (error) {
-      console.error('Error loading services:', error);
+      console.error('❌ Error loading services:', error);
+      // Use fallback services on error
+      const fallbackServices: Service[] = [
+        { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 25 },
+        { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 15 },
+        { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 35 },
+      ];
+      setServices(fallbackServices);
+      addNotification('Backend not available. Using default services.', 'warning');
     }
   }
 
@@ -73,31 +138,60 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
       return;
     }
 
+    if (!user?.email) {
+      addNotification('Please log in to book an appointment', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
       const [hours, minutes] = selectedTime.split(':');
-      const endTime = new Date(selectedDate);
-      endTime.setHours(parseInt(hours), parseInt(minutes) + selectedService.duration_minutes);
+      
+      // Create proper Date objects for startTime and endTime
+      const startDateTime = new Date(selectedDate);
+      startDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      
+      const endDateTime = new Date(startDateTime);
+      endDateTime.setMinutes(endDateTime.getMinutes() + selectedService.duration_minutes);
 
-      const { error } = await supabase
-        .from('appointments')
-        .insert({
-          customer_id: user?.id,
-          barber_id: selectedBarber.id,
-          service_id: selectedService.id,
-          appointment_date: selectedDate.toISOString().split('T')[0],
-          start_time: selectedTime,
-          end_time: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`,
-          status: 'pending',
-          payment_status: 'pending',
-          payment_amount: selectedService.price,
-        });
+      // Prepare booking data matching backend schema
+      const bookingData = {
+        customerName: (user as any).profile?.full_name || user.email?.split('@')[0] || 'Customer',
+        customerEmail: user.email,
+        customerId: user?.id,
+        customerPhone: (user as any).profile?.phone || '',
+        barber: selectedBarber._id, // Backend expects 'barber' not 'barberId'
+        startTime: startDateTime.toISOString(), // Send as ISO string (Date type)
+        endTime: endDateTime.toISOString(),
+        status: 'pending',
+        serviceName: selectedService.name, // Store service name for reference
+        servicePrice: selectedService.price,
+        serviceDuration: selectedService.duration_minutes,
+      };
 
-      if (error) throw error;
+      const response = await fetch('http://localhost:5000/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bookingData),
+      });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Booking failed:', errorData);
+        throw new Error(errorData.message || errorData.error || 'Failed to book appointment');
+      }
+
+      const result = await response.json();
+      console.log('✅ Booking created:', result);
+      
       addNotification('Appointment booked successfully!', 'success');
+      
+      // Clear pending booking from localStorage
+      localStorage.removeItem('pendingBooking');
+      
       onNavigate('payment');
     } catch (error: any) {
+      console.error('❌ Booking error:', error);
       addNotification(error.message || 'Failed to book appointment', 'error');
     } finally {
       setLoading(false);
@@ -158,29 +252,37 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
                 Select a Barber
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {barbers.map((barber) => (
-                  <button
-                    key={barber.id}
-                    onClick={() => {
-                      setSelectedBarber(barber);
-                      setStep(2);
-                    }}
-                    className="text-left p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-600 hover:shadow-lg transition-all"
-                  >
-                    <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">
-                      {barber.profile?.full_name?.charAt(0) || 'B'}
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                      {barber.profile?.full_name}
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{barber.specialization}</p>
-                    <div className="flex items-center gap-2 text-sm text-amber-600">
-                      <span>⭐ {barber.rating.toFixed(1)}</span>
-                      <span className="text-gray-400">•</span>
-                      <span>{barber.experience_years}+ years</span>
-                    </div>
-                  </button>
-                ))}
+                {barbers.length === 0 ? (
+                  <div className="col-span-full text-center py-8 text-gray-600 dark:text-gray-400">
+                    No barbers available. Please try again later.
+                  </div>
+                ) : (
+                  barbers.map((barber) => (
+                    <button
+                      key={barber._id}
+                      onClick={() => {
+                        setSelectedBarber(barber);
+                        setStep(2);
+                      }}
+                      className="text-left p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-600 hover:shadow-lg transition-all"
+                    >
+                      <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">
+                        {barber.name?.charAt(0) || 'B'}
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                        {barber.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        {barber.specialization || barber.shopName || 'Professional Barber'}
+                      </p>
+                      <div className="flex items-center gap-2 text-sm text-amber-600">
+                        <span>⭐ {barber.rating?.toFixed(1) || '5.0'}</span>
+                        <span className="text-gray-400">•</span>
+                        <span>{barber.experienceYears || 5}+ years</span>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -192,23 +294,29 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
                 Choose a Service
               </h2>
               <div className="grid md:grid-cols-2 gap-4 mb-6">
-                {services.map((service) => (
-                  <button
-                    key={service.id}
-                    onClick={() => {
-                      setSelectedService(service);
-                      setStep(3);
-                    }}
-                    className="text-left p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-600 hover:shadow-lg transition-all"
-                  >
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{service.name}</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{service.description}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-amber-600 font-bold text-xl">${service.price}</span>
-                      <span className="text-gray-500 text-sm">{service.duration_minutes} min</span>
-                    </div>
-                  </button>
-                ))}
+                {services.length === 0 ? (
+                  <div className="col-span-full text-center py-8 text-gray-600 dark:text-gray-400">
+                    No services available. Please contact the barber shop.
+                  </div>
+                ) : (
+                  services.map((service) => (
+                    <button
+                      key={service._id}
+                      onClick={() => {
+                        setSelectedService(service);
+                        setStep(3);
+                      }}
+                      className="text-left p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-600 hover:shadow-lg transition-all"
+                    >
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{service.name}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{service.description}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-amber-600 font-bold text-xl">${service.price}</span>
+                        <span className="text-gray-500 text-sm">{service.duration_minutes} min</span>
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
               <button
                 onClick={() => setStep(1)}
@@ -295,7 +403,7 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Barber:</span>
-                    <span className="font-medium text-gray-900 dark:text-white">{selectedBarber?.profile?.full_name}</span>
+                    <span className="font-medium text-gray-900 dark:text-white">{selectedBarber?.name}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Service:</span>

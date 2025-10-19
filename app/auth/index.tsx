@@ -1,18 +1,41 @@
 import { User, Scissors, Phone, Mail, Lock } from 'lucide-react-native';
 import React, { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
 import * as Animatable from 'react-native-animatable';
+import { useAuth } from '../../src/contexts/AuthContext';
 
 export default function AuthScreen() {
   const router = useRouter();
-  const [userType, setUserType] = useState<'customer' | 'barber' | null>(null);
-  const [loginMethod, setLoginMethod] = useState<'phone' | 'email'>('phone');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const auth = useAuth();
+
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [role, setRole] = useState<'customer' | 'barber'>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
+  const [fullName, setFullName] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    setLoading(true);
+    try {
+      if (mode === 'signup') {
+        await auth.signUp(email, password, fullName, role);
+        Alert.alert('Success', 'Account created. Check your email for confirmation if required.');
+        // navigation or redirect after signup
+        // router.push('/'); // adjust to your home route
+      } else {
+        await auth.signIn(email, password);
+        Alert.alert('Success', 'Signed in');
+        // router.push('/');
+      }
+    } catch (err: any) {
+      console.error('Auth error', err);
+      Alert.alert('Authentication error', err?.message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <KeyboardAvoidingView
@@ -20,8 +43,63 @@ export default function AuthScreen() {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Animatable.View animation="fadeIn" duration={1000}>
-          {/* Your component content here */}
+        <Animatable.View animation="fadeIn" duration={400}>
+          <View style={styles.header}>
+            <View style={styles.logoContainer}>
+              <Scissors size={32} />
+            </View>
+            <Text style={styles.title}>Barber Slot</Text>
+            <Text style={styles.subtitle}>{mode === 'signup' ? 'Create an account' : 'Sign in to continue'}</Text>
+          </View>
+
+          <View style={styles.loginContainer}>
+            <View style={styles.loginHeader}>
+              <Text style={styles.loginTitle}>{mode === 'signup' ? 'Sign up' : 'Login'}</Text>
+            </View>
+
+            {mode === 'signup' && (
+              <View style={styles.formContainer}>
+                <View style={styles.inputContainer}>
+                  <TextInput placeholder="Full name" value={fullName} onChangeText={setFullName} style={styles.input} />
+                </View>
+              </View>
+            )}
+
+            <View style={styles.formContainer}>
+              <View style={styles.inputContainer}>
+                <TextInput placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
+              </View>
+
+              <View style={styles.inputContainer}>
+                <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
+              </View>
+
+              {mode === 'signup' && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <TouchableOpacity onPress={() => setRole('customer')} style={[styles.methodButton, role === 'customer' ? styles.activeMethodButton : undefined]}>
+                    <Text style={[styles.methodButtonText, role === 'customer' ? styles.activeMethodButtonText : undefined]}>Customer</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setRole('barber')} style={[styles.methodButton, role === 'barber' ? styles.activeMethodButton : undefined]}>
+                    <Text style={[styles.methodButtonText, role === 'barber' ? styles.activeMethodButtonText : undefined]}>Barber</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>{mode === 'signup' ? 'Create account' : 'Sign in'}</Text>
+                )}
+              </TouchableOpacity>
+
+              <View style={{ marginTop: 12, alignItems: 'center' }}>
+                <TouchableOpacity onPress={() => setMode(mode === 'signup' ? 'login' : 'signup')}>
+                  <Text style={{ color: '#673AB7' }}>{mode === 'signup' ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </Animatable.View>
       </ScrollView>
     </KeyboardAvoidingView>
