@@ -22,6 +22,7 @@ app.use('/api/favorites', require('./routes/favoriteRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 app.use('/api/designs', require('./routes/designRoutes'));
 app.use('/api/services', require('./routes/serviceRoutes'));
+app.use('/api/reviews', require('./routes/reviewRoutes'));
 app.use('/api/auth', require('./routes/authSyncRoutes'));
 
 const PORT = process.env.PORT || 5000;

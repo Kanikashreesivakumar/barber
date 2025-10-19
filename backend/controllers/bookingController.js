@@ -4,10 +4,53 @@ const mongoose = require('mongoose');
 
 exports.getBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find().populate('barber');
-    res.json(bookings);
+    const { customerId } = req.query;
+    let query = {};
+    if (customerId) {
+      // Allow matching either stored supabase id, email, or name for backward compatibility
+      query = {
+        $or: [
+          { customerId: customerId },
+          { customerEmail: customerId },
+          { customerName: customerId },
+        ],
+      };
+    }
+    const bookings = await Booking.find(query)
+      .populate('barber')
+      .sort({ startTime: -1 });
+
+    // For each booking, add queuePosition and estimatedWait (for confirmed bookings)
+    const enhanced = await Promise.all(bookings.map(async (b) => {
+      let queuePosition = null;
+      let estimatedWait = null;
+      if (b.status === 'confirmed' && b.barber && b.startTime) {
+        // Find all confirmed bookings for this barber on the same day, sorted by startTime
+        const dayStart = new Date(b.startTime);
+        dayStart.setHours(0,0,0,0);
+        const dayEnd = new Date(b.startTime);
+        dayEnd.setHours(23,59,59,999);
+        const sameDayBookings = await Booking.find({
+          barber: b.barber._id || b.barber,
+          status: 'confirmed',
+          startTime: { $gte: dayStart, $lte: dayEnd }
+        }).sort({ startTime: 1 });
+        // Position is 1-based index in sorted list
+        const idx = sameDayBookings.findIndex(x => String(x._id) === String(b._id));
+        queuePosition = idx >= 0 ? idx + 1 : null;
+        // Use serviceDuration if set, else default 30 min
+        const duration = b.serviceDuration || 30;
+        estimatedWait = queuePosition !== null ? (duration * (queuePosition - 1)) : null;
+      }
+      // Attach to booking object (toObject for lean copy)
+      const obj = b.toObject();
+      obj.queuePosition = queuePosition;
+      obj.estimatedWait = estimatedWait;
+      return obj;
+    }));
+    res.json(enhanced);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+  res.status(500).json({ message: err.message });
   }
 };
 
