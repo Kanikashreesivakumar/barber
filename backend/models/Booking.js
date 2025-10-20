@@ -13,6 +13,8 @@ const BookingSchema = new mongoose.Schema({
   serviceName: { type: String },
   servicePrice: { type: Number },
   serviceDuration: { type: Number }, // in minutes
+  // Optional seat allocation (visual seat number)
+  seatNumber: { type: Number },
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -1,5 +1,6 @@
 const Booking = require('../models/Booking');
 const Notification = require('../models/Notification');
+const Barber = require('../models/Barber');
 const mongoose = require('mongoose');
 
 exports.getBookings = async (req, res) => {
@@ -56,6 +57,7 @@ exports.getBookings = async (req, res) => {
 
 exports.getBookingsByBarber = async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const { barberId } = req.params;
     
     // Validate barber ID format
@@ -71,6 +73,36 @@ exports.getBookingsByBarber = async (req, res) => {
     res.json(bookings);
   } catch (err) {
     console.error('getBookingsByBarber error:', err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// Fetch bookings by barber email to handle cases where frontend only knows email
+exports.getBookingsByBarberEmail = async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const { email } = req.params;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const decoded = decodeURIComponent(email).toLowerCase();
+    // Find all barbers with this email (handles duplicates if unique index not enforced)
+    const barbers = await Barber.find({ email: decoded });
+    if (!barbers || barbers.length === 0) {
+      // If no barber exists for this email, return an empty list to avoid breaking clients
+      // Frontend can choose to prompt linking the account to an existing Barber profile
+      console.warn(`No barber found for email ${decoded}; returning empty bookings []`);
+      return res.status(200).json([]);
+    }
+
+    const ids = barbers.map(b => b._id);
+    const bookings = await Booking.find({ barber: { $in: ids } })
+      .populate('barber')
+      .sort({ startTime: 1 });
+
+    console.log(`Found ${bookings.length} bookings for barber email ${decoded} (ids ${ids.join(',')})`);
+    res.json(bookings);
+  } catch (err) {
+    console.error('getBookingsByBarberEmail error:', err);
     res.status(500).json({ message: err.message });
   }
 };

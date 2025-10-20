@@ -12,7 +12,8 @@ exports.getBarbers = async (req, res) => {
 exports.getBarberByEmail = async (req, res) => {
   try {
     const { email } = req.params;
-    const barber = await Barber.findOne({ email: decodeURIComponent(email) });
+    const normalized = decodeURIComponent(email).toLowerCase();
+    const barber = await Barber.findOne({ email: normalized });
     
     if (!barber) {
       return res.status(404).json({ message: 'Barber not found' });
@@ -41,9 +42,10 @@ exports.upsertBarberByEmail = async (req, res) => {
     const update = req.body || {};
     if (!email) return res.status(400).json({ message: 'Email is required' });
 
+    const normalized = decodeURIComponent(email).toLowerCase();
     const barber = await Barber.findOneAndUpdate(
-      { email: decodeURIComponent(email) },
-      { $set: { email: decodeURIComponent(email), ...update } },
+      { email: normalized },
+      { $set: { email: normalized, ...update } },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
 

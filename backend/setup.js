@@ -14,12 +14,12 @@ require('dotenv').config();
 
 // Sample services
 const services = [
-  { name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 25 },
-  { name: 'Beard Trim', description: 'Precision beard trimming and shaping', duration_minutes: 15, price: 15 },
-  { name: 'Hair & Beard Combo', description: 'Complete haircut and beard service', duration_minutes: 45, price: 35 },
-  { name: 'Hot Towel Shave', description: 'Traditional hot towel shave experience', duration_minutes: 30, price: 30 },
-  { name: 'Kids Haircut', description: 'Haircut for children under 12', duration_minutes: 20, price: 18 },
-  { name: 'Hair Coloring', description: 'Professional hair coloring service', duration_minutes: 60, price: 50 }
+  { name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 350 },
+  { name: 'Beard Trim', description: 'Precision beard trimming and shaping', duration_minutes: 15, price: 300 },
+  { name: 'Hair & Beard Combo', description: 'Complete haircut and beard service', duration_minutes: 45, price: 550 },
+  { name: 'Hot Towel Shave', description: 'Traditional hot towel shave experience', duration_minutes: 30, price: 400 },
+  { name: 'Kids Haircut', description: 'Haircut for children under 12', duration_minutes: 20, price: 300 },
+  { name: 'Hair Coloring', description: 'Professional hair coloring service', duration_minutes: 60, price: 700 }
 ];
 
 // Sample barbers
