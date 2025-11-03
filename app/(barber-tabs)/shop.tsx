@@ -19,10 +19,10 @@ export default function BarberShopScreen() {
   };
 
   const services = [
-    { name: "Haircut", price: "₹100", duration: "30 min" },
-    { name: "Beard Trim", price: "₹50", duration: "15 min" },
-    { name: "Shave", price: "₹40", duration: "20 min" },
-    { name: "Hair Wash", price: "₹30", duration: "10 min" }
+    { name: "Haircut", price: "₹350", duration: "30 min" },
+    { name: "Beard Trim", price: "₹300", duration: "15 min" },
+    { name: "Shave", price: "₹400", duration: "20 min" },
+    { name: "Hair Wash", price: "₹300", duration: "10 min" }
   ];
 
   return (

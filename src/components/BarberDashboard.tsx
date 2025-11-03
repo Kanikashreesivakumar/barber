@@ -35,6 +35,11 @@ export function BarberDashboard() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'completed'>('all');
   const [todaysCount, setTodaysCount] = useState(0);
 
+  // Seat view state
+  const [showSeatView, setShowSeatView] = useState(false);
+  const [seatViewDate, setSeatViewDate] = useState<string>('');
+  const [takenSeats, setTakenSeats] = useState<number[]>([]);
+
   // Form state for creating/updating barber details
   const [formName, setFormName] = useState('');
   const [formPhone, setFormPhone] = useState('');
@@ -110,6 +115,7 @@ export function BarberDashboard() {
               status: (booking.status || 'pending').toLowerCase(),
               payment_status: 'pending',
               payment_amount: booking.servicePrice || 0,
+              seatNumber: booking.seatNumber || null,
               notes: '',
               created_at: booking.createdAt,
               updated_at: booking.updatedAt || booking.createdAt,
@@ -219,6 +225,28 @@ export function BarberDashboard() {
     }
   }
 
+  async function assignSeat(appointmentId: string, seatNumber: number) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/bookings/${appointmentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ seatNumber }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to assign seat');
+      }
+
+      addNotification(`Seat #${seatNumber} assigned`, 'success');
+      loadBarberData();
+    } catch (error: any) {
+      console.error('Error assigning seat:', error);
+      addNotification(error.message || 'Failed to assign seat', 'error');
+    }
+  }
+
   async function updateAppointmentStatus(appointmentId: string, status: string) {
     try {
       // Update in MongoDB
@@ -293,6 +321,44 @@ export function BarberDashboard() {
     } catch (err: any) {
       console.error('saveBarberDetails error:', err);
       addNotification(err.message || 'Failed to save details', 'error');
+    }
+  }
+
+  async function openSeatView(date?: string) {
+    if (!barberProfile) {
+      addNotification('Barber profile not loaded', 'error');
+      return;
+    }
+    try {
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      setSeatViewDate(targetDate);
+      
+      // Fetch bookings for this date
+      const dayStart = new Date(targetDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(targetDate);
+      dayEnd.setHours(23, 59, 59, 999);
+      
+      const ts = Date.now();
+      const res = await fetch(`${API_BASE_URL}/api/bookings/barber/${barberProfile._id}?t=${ts}`);
+      if (!res.ok) throw new Error('Failed to load seat data');
+      
+      const bookings = await res.json();
+      
+      // Extract seat numbers for this date
+      const seats = bookings
+        .filter((b: any) => {
+          if (!b.startTime || !b.seatNumber) return false;
+          const t = new Date(b.startTime).getTime();
+          return t >= dayStart.getTime() && t <= dayEnd.getTime();
+        })
+        .map((b: any) => b.seatNumber);
+      
+      setTakenSeats(seats || []);
+      setShowSeatView(true);
+    } catch (err: any) {
+      console.error('openSeatView error:', err);
+      addNotification(err.message || 'Failed to open seat view', 'error');
     }
   }
 
@@ -535,6 +601,13 @@ export function BarberDashboard() {
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Appointments</h2>
             <div className="flex gap-2 items-center">
               <button
+                onClick={() => openSeatView()}
+                className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                title="View seat occupancy for today"
+              >
+                View Seats
+              </button>
+              <button
                 onClick={async () => { setLoading(true); await loadBarberData(); }}
                 className="px-3 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
                 title="Refresh appointments"
@@ -594,12 +667,17 @@ export function BarberDashboard() {
                           <Clock className="w-4 h-4" />
                           <span>{appointment.start_time}</span>
                         </div>
-                        <span className="font-medium text-amber-600">${appointment.payment_amount}</span>
+                        <span className="font-medium text-amber-600">₹{appointment.payment_amount}</span>
+                        {appointment.seatNumber && (
+                          <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-md text-xs font-medium">
+                            Seat #{appointment.seatNumber}
+                          </span>
+                        )}
                       </div>
                     </div>
 
                     {appointment.status === 'pending' && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap">
                         <button
                           onClick={() => updateAppointmentStatus(appointment.id, 'confirmed')}
                           className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
@@ -614,12 +692,40 @@ export function BarberDashboard() {
                           <X className="w-4 h-4" />
                           Reject
                         </button>
-                        <div className="flex items-center ml-2">
-                          <input placeholder="HH:MM" className="p-2 border rounded-l-md" id={`time-${appointment.id}`} />
-                          <button onClick={() => {
-                            const el = document.getElementById(`time-${appointment.id}`) as HTMLInputElement | null;
-                            if (el && el.value) allocateSlot(appointment.id, el.value);
-                          }} className="px-3 py-2 bg-amber-600 text-white rounded-r-md">Allocate</button>
+                        <div className="flex items-center gap-1">
+                          <input
+                            placeholder="HH:MM"
+                            className="p-2 border rounded-l-md w-20 dark:bg-gray-900 dark:text-white"
+                            id={`time-${appointment.id}`}
+                          />
+                          <button
+                            onClick={() => {
+                              const el = document.getElementById(`time-${appointment.id}`) as HTMLInputElement | null;
+                              if (el && el.value) allocateSlot(appointment.id, el.value);
+                            }}
+                            className="px-3 py-2 bg-amber-600 text-white rounded-r-md hover:bg-amber-700"
+                          >
+                            Set Time
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="1"
+                            max="20"
+                            placeholder="Seat #"
+                            className="p-2 border rounded-l-md w-20 dark:bg-gray-900 dark:text-white"
+                            id={`seat-${appointment.id}`}
+                          />
+                          <button
+                            onClick={() => {
+                              const el = document.getElementById(`seat-${appointment.id}`) as HTMLInputElement | null;
+                              if (el && el.value) assignSeat(appointment.id, parseInt(el.value));
+                            }}
+                            className="px-3 py-2 bg-blue-600 text-white rounded-r-md hover:bg-blue-700"
+                          >
+                            Assign Seat
+                          </button>
                         </div>
                       </div>
                     )}
@@ -680,6 +786,77 @@ export function BarberDashboard() {
             </div>
           )}
         </div>
+
+        {/* Seat View Modal */}
+        {showSeatView && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Seat Occupancy</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {seatViewDate ? new Date(seatViewDate).toLocaleDateString() : 'Today'}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    value={seatViewDate}
+                    onChange={(e) => openSeatView(e.target.value)}
+                    className="px-3 py-2 border rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="mb-4 flex gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-green-500 rounded"></div>
+                  <span className="text-gray-700 dark:text-gray-300">Available</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 bg-red-500 rounded"></div>
+                  <span className="text-gray-700 dark:text-gray-300">Occupied</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-3 mb-6">
+                {Array.from({ length: 20 }, (_, i) => i + 1).map((seatNum) => {
+                  const isTaken = takenSeats.includes(seatNum);
+                  return (
+                    <div
+                      key={seatNum}
+                      className={`p-4 rounded-lg text-center font-bold border-2 ${
+                        isTaken
+                          ? 'bg-red-100 dark:bg-red-900/30 border-red-500 text-red-800 dark:text-red-300'
+                          : 'bg-green-100 dark:bg-green-900/30 border-green-500 text-green-800 dark:text-green-300'
+                      }`}
+                    >
+                      #{seatNum}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  <span className="font-bold">{takenSeats.length}</span> of 20 seats occupied
+                </p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  <span className="font-bold">{20 - takenSeats.length}</span> seats available
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setShowSeatView(false)}
+                  className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

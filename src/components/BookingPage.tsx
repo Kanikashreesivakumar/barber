@@ -96,10 +96,10 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
       // If no services from backend, use fallback
       if (!data || data.length === 0) {
         console.log('⚠️ No services in database, using fallback services');
-        const fallbackServices: Service[] = [
-          { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 25 },
-          { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 15 },
-          { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 35 },
+        const fallbackServices = [
+          { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 350 },
+          { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 300 },
+          { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 550 },
         ];
         setServices(fallbackServices);
         addNotification('Using default services. Please seed the database.', 'info');
@@ -110,9 +110,9 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
       console.error('❌ Error loading services:', error);
       // Use fallback services on error
       const fallbackServices: Service[] = [
-        { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 25 },
-        { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 15 },
-        { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 35 },
+        { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 350 },
+        { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 300 },
+        { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 550 },
       ];
       setServices(fallbackServices);
       addNotification('Backend not available. Using default services.', 'warning');
@@ -422,7 +422,7 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
                   <div className="border-t border-gray-300 dark:border-gray-600 pt-2 mt-2">
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-400">Total:</span>
-                      <span className="font-bold text-amber-600 text-lg">${selectedService?.price}</span>
+                      <span className="font-bold text-amber-600 text-lg">₹{selectedService?.price}</span>
                     </div>
                   </div>
                 </div>

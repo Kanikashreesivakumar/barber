@@ -1,3 +1,5 @@
+** contirbute** : k4niz
+
 # BarberSlot - Modern Barbershop Booking Platform
 
 A full-stack web application that enables customers to book barber appointments online, barbers to manage their schedules, and admins to oversee operations efficiently.

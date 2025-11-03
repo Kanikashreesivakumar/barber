@@ -10,8 +10,7 @@ type HomePageProps = {
 
 export function HomePage({ onNavigate }: HomePageProps) {
   const { user } = useAuth();
-  // debug: surface auth state on the home page to help diagnose routing issues
-  const { profile, loading } = (useAuth() as any);
+  // ...existing code...
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-br from-white via-amber-50/30 to-white dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 transition-colors">
@@ -20,15 +19,10 @@ export function HomePage({ onNavigate }: HomePageProps) {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 relative">
           <div className="text-center mb-16">
-              {/* DEBUG: show auth state */}
-              <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-                <div>auth.loading: {String(loading)}</div>
-                <div>auth.user: {user ? user.email || user.id : 'null'}</div>
-                <div>auth.profile.role: {profile?.role ?? 'null'}</div>
-              </div>
+            
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-300 rounded-full text-sm font-medium mb-6">
               <Award className="w-4 h-4" />
-              <span>Premium Barbershop Experience</span>
+              <span>Premium Barbershop Experience..!</span>
             </div>
 
             <h1 className="text-5xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">

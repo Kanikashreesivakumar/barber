@@ -14,7 +14,7 @@ export default function BookingDetailScreen() {
     rating: 4.5,
     waitTime: "15 mins",
     queueCount: 3,
-    services: ["Haircut - ₹100", "Beard Trim - ₹50", "Shave - ₹40"],
+    services: ["Haircut - ₹350", "Beard Trim - ₹300", "Shave - ₹400"],
     availableSlots: [
       "2:30 PM", "3:00 PM", "3:30 PM", "4:00 PM", "4:30 PM", "5:00 PM"
     ]

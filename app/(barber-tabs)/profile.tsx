@@ -36,7 +36,7 @@ export default function BarberProfileScreen() {
               <Text style={styles.statLabel}>Customers Served</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statNumber}>₹800</Text>
+              <Text style={styles.statNumber}>₹2,450</Text>
               <Text style={styles.statLabel}>Revenue</Text>
             </View>
             <View style={styles.statItem}>

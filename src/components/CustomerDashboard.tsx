@@ -31,6 +31,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [currentBookingId, setCurrentBookingId] = useState<string | null>(null); // Track booking for seat update
 
   useEffect(() => {
     loadAppointments();
@@ -79,22 +80,27 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
       const res = await fetch(`http://localhost:5000/api/bookings?customerId=${encodeURIComponent(key)}`);
       if (!res.ok) throw new Error('Failed to load appointments');
       const data = await res.json();
+      console.log('Raw bookings data:', data);
       // Map backend booking to UI Appointment shape
-      const mapped = (data || []).map((b: any) => ({
-        id: b._id,
-        status: b.status,
-        appointment_date: b.startTime ? new Date(b.startTime).toISOString().split('T')[0] : '',
-        start_time: b.startTime ? new Date(b.startTime).toTimeString().slice(0,5) : '',
-        end_time: b.endTime ? new Date(b.endTime).toTimeString().slice(0,5) : '',
-        payment_amount: b.servicePrice || 0,
-        customer: { full_name: b.customerName },
-        barber_id: b.barber?._id || (typeof b.barber === 'string' ? b.barber : ''),
-        barber: { profile: { full_name: b.barber?.name || 'Barber' } },
-        service: { name: b.serviceName || 'Service' },
-        seatNumber: b.seatNumber || null,
-        queuePosition: b.queuePosition || null,
-        estimatedWait: b.estimatedWait || null,
-      }));
+      const mapped = (data || []).map((b: any) => {
+        console.log('Mapping booking:', b);
+        return {
+          id: b._id,
+          status: b.status,
+          appointment_date: b.startTime ? new Date(b.startTime).toISOString().split('T')[0] : '',
+          start_time: b.startTime ? new Date(b.startTime).toTimeString().slice(0,5) : '',
+          end_time: b.endTime ? new Date(b.endTime).toTimeString().slice(0,5) : '',
+          payment_amount: b.servicePrice || 0,
+          customer: { full_name: b.customerName },
+          barber_id: b.barber?._id || (typeof b.barber === 'string' ? b.barber : ''),
+          barber: { profile: { full_name: b.barber?.name || 'Barber' } },
+          service: { name: b.serviceName || 'Service' },
+          seatNumber: b.seatNumber || null,
+          queuePosition: b.queuePosition || null,
+          estimatedWait: b.estimatedWait || null,
+        };
+      });
+      console.log('Mapped appointments:', mapped);
       setAppointments(mapped);
     } catch (error) {
       console.error('Error loading appointments:', error);
@@ -238,10 +244,11 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
     openSeatMap(selectedBarberId, selectedDate);
   }
 
-  async function openSeatMap(barberId: string, date: string) {
+  async function openSeatMap(barberId: string, date: string, bookingId?: string) {
     try {
       setSelectedSeat(null);
       setTakenSeats([]);
+      setCurrentBookingId(bookingId || null);
       // call backend to fetch bookings for barber on that date and collect taken seat numbers
       const res = await fetch(`http://localhost:5000/api/bookings/barber/${barberId}`);
       if (!res.ok) throw new Error('Failed to load seats');
@@ -267,6 +274,28 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
       setShowSeatMap(true);
     } catch (err: any) {
       addNotification(err.message || 'Failed to open seat map', 'error');
+    }
+  }
+
+  async function updateBookingSeat() {
+    if (!selectedSeat || !currentBookingId) {
+      addNotification('Please select a seat', 'warning');
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:5000/api/bookings/${currentBookingId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seatNumber: selectedSeat }),
+      });
+      if (!response.ok) throw new Error('Failed to update seat');
+      addNotification(`Seat updated to #${selectedSeat}`, 'success');
+      setShowSeatMap(false);
+      setCurrentBookingId(null);
+      loadAppointments();
+    } catch (err: any) {
+      console.error('Update seat error:', err);
+      addNotification(err.message || 'Failed to update seat', 'error');
     }
   }
 
@@ -329,12 +358,12 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
         <div className="mb-8">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Upcoming Appointments</h2>
           <div className="flex flex-wrap items-center gap-2 mb-4">
-            <button onClick={handleOpenBookingForm} className="px-4 py-2 bg-amber-600 text-white rounded-lg">New Booking</button>
-            <button onClick={loadQueueStatus} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg">Refresh Queue</button>
+            <button onClick={handleOpenBookingForm} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors">New Booking</button>
+            <button onClick={loadQueueStatus} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Refresh Queue</button>
             <select
               value={selectedBarberId || ''}
               onChange={(e) => setSelectedBarberId(e.target.value)}
-              className="p-2 border rounded-lg text-gray-900 bg-white min-w-[180px]"
+              className="p-2 border-2 border-amber-500 rounded-lg text-gray-900 bg-amber-50 min-w-[180px] focus:border-amber-600 focus:ring-2 focus:ring-amber-200 outline-none transition-colors"
             >
               <option value="">Barber for seats…</option>
               {barbers.map((b) => (
@@ -347,11 +376,11 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="p-2 border rounded-lg text-gray-900 bg-white"
+              className="p-2 border-2 border-amber-500 rounded-lg text-gray-900 bg-amber-50 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 outline-none transition-colors"
             />
             <button
               onClick={handleViewSeatAvailability}
-              className="px-4 py-2 border rounded-lg bg-white text-gray-900 dark:text-gray-900 hover:bg-gray-50"
+              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
               title="View seat availability for the selected barber and date"
             >
               View Seat Availability
@@ -404,21 +433,31 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                   </div>
 
                   <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <span className="text-xl font-bold text-amber-600">${appointment.payment_amount}</span>
-                    {appointment.status === 'pending' && (
+                    <span className="text-xl font-bold text-amber-600">₹{appointment.payment_amount}</span>
+                    <div className="flex gap-2">
+                      {appointment.status === 'pending' && (
+                        <button
+                          onClick={() => handleCancelAppointment(appointment.id)}
+                          className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleCancelAppointment(appointment.id)}
-                        className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        onClick={() => {
+                          const barberId = appointment.barber_id;
+                          if (barberId && appointment.appointment_date) {
+                            openSeatMap(barberId, appointment.appointment_date, appointment.id);
+                          } else {
+                            addNotification('Unable to load seats - barber or date missing', 'error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                        title="View and update seat assignment"
                       >
-                        Cancel
+                        View Seats
                       </button>
-                    )}
-                    <button
-                      onClick={() => appointment.barber_id && openSeatMap(appointment.barber_id, appointment.appointment_date)}
-                      className="ml-2 px-4 py-2 border rounded-lg bg-white text-gray-900 dark:text-gray-900 hover:bg-gray-50"
-                    >
-                      View Seats
-                    </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -451,7 +490,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                     </>
                   ) : (
                     services.map((s) => (
-                      <option key={s._id || s.id} value={s._id || s.id}>{s.name} — {s.duration_minutes}m (${s.price})</option>
+                      <option key={s._id || s.id} value={s._id || s.id}>{s.name} — {s.duration_minutes}m (₹{s.price})</option>
                     ))
                   )}
                 </select>
@@ -460,8 +499,14 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                 <label className="text-gray-900 font-medium">Time</label>
                 <input type="time" value={selectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="p-3 border rounded-lg text-gray-900 bg-white" />
                 <div className="flex items-center gap-2">
-                  <button type="button" onClick={handleViewSeatAvailability} className="px-3 py-2 border rounded-lg bg-white text-gray-900 dark:text-gray-900 hover:bg-gray-50">View Seat Availability</button>
-                  {selectedSeat && <span className="text-sm text-gray-600">Selected seat: #{selectedSeat}</span>}
+                  <button 
+                    type="button" 
+                    onClick={handleViewSeatAvailability} 
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                  >
+                    View Seat Availability
+                  </button>
+                  {selectedSeat && <span className="text-sm font-medium text-amber-600">Selected seat: #{selectedSeat}</span>}
                 </div>
               </div>
               <div className="mt-4 flex gap-3 justify-end">
@@ -487,29 +532,40 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
               <div className="flex items-center gap-6 mb-3 text-sm text-gray-600">
                 <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-emerald-400"></span> Available</div>
                 <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-400"></span> Booked</div>
-                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-600"></span> Selected</div>
+                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-600"></span> Your Selection</div>
               </div>
-              {/* If user already booked, show info and disable selection */}
-              {selectedSeat && takenSeats.includes(selectedSeat) ? (
-                <div className="mb-2 text-red-700 font-semibold">You have already booked seat #{selectedSeat} for this date. You cannot change your seat.</div>
-              ) : null}
+              {/* Show current seat if already booked */}
+              {selectedSeat && takenSeats.includes(selectedSeat) && currentBookingId && (
+                <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
+                  <strong>Current seat:</strong> #{selectedSeat}. Select a different available seat to change your booking.
+                </div>
+              )}
               <div className="grid grid-cols-8 gap-2 mb-4">
                 {Array.from({ length: 32 }).map((_, i) => {
                   const seatNum = i + 1;
                   const taken = takenSeats.includes(seatNum);
-                  // If user already booked, all seats are disabled
-                  const disableAll = selectedSeat !== null && takenSeats.includes(selectedSeat);
+                  const isCurrentUserSeat = selectedSeat === seatNum && taken && currentBookingId;
+                  // Only disable seats that are taken by other users
+                  const disabled = taken && !isCurrentUserSeat;
                   return (
                     <button
                       key={seatNum}
-                      disabled={taken || disableAll}
-                      onClick={() => !disableAll && setSelectedSeat(seatNum)}
-                      title={taken ? 'Booked' : (selectedSeat === seatNum ? 'Selected' : 'Available')}
-                      className={`p-2 rounded-md text-sm border ${taken
-                        ? 'bg-red-200 text-red-800 border-red-300 cursor-not-allowed'
-                        : selectedSeat === seatNum
-                          ? 'bg-amber-600 text-white border-amber-600'
-                          : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-emerald-300'} ${disableAll ? 'opacity-60 cursor-not-allowed' : ''}`}
+                      disabled={disabled}
+                      onClick={() => !disabled && setSelectedSeat(seatNum)}
+                      title={
+                        isCurrentUserSeat ? 'Your current seat' :
+                        taken ? 'Booked by someone else' : 
+                        selectedSeat === seatNum ? 'Selected' : 'Available'
+                      }
+                      className={`p-2 rounded-md text-sm border font-medium ${
+                        disabled
+                          ? 'bg-red-200 text-red-800 border-red-300 cursor-not-allowed'
+                          : selectedSeat === seatNum
+                            ? 'bg-amber-600 text-white border-amber-600'
+                            : isCurrentUserSeat
+                              ? 'bg-blue-100 text-blue-800 border-blue-300'
+                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-emerald-300'
+                      }`}
                     >
                       {seatNum}
                     </button>
@@ -517,10 +573,24 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                 })}
               </div>
               <div className="flex justify-end gap-3">
-                <button onClick={() => { setShowSeatMap(false); }} className="px-4 py-2 border rounded-lg">Close</button>
-                {!selectedSeat || !takenSeats.includes(selectedSeat) ? (
-                  <button onClick={() => { setShowSeatMap(false); addNotification('Seat selected', 'success'); }} className="px-4 py-2 bg-amber-600 text-white rounded-lg">Confirm Seat</button>
-                ) : null}
+                <button onClick={() => { setShowSeatMap(false); setCurrentBookingId(null); }} className="px-4 py-2 border rounded-lg text-gray-900 bg-white hover:bg-gray-50">Close</button>
+                {selectedSeat && (
+                  <button 
+                    onClick={() => { 
+                      if (currentBookingId) {
+                        // Update existing booking seat
+                        updateBookingSeat();
+                      } else {
+                        // Just select seat for new booking
+                        setShowSeatMap(false); 
+                        addNotification(`Seat #${selectedSeat} selected for booking`, 'success'); 
+                      }
+                    }} 
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
+                  >
+                    {currentBookingId ? 'Update Seat' : 'Confirm Seat'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
