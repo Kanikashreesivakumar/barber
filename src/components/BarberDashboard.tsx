@@ -273,7 +273,7 @@ export function BarberDashboard() {
   async function toggleAvailability() {
     if (!barberProfile) return;
     try {
-  const response = await fetch(`${API_BASE_URL}/api/barbers/${barberProfile._id}`, {
+  const response = await fetch(`${API_BASE_URL}/api/barbers/${barberProfile._id}/availability`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ is_available: !barberProfile.is_available })

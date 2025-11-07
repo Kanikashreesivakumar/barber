@@ -15,7 +15,6 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [designs, setDesigns] = useState<any[]>([]);
   const [barbers, setBarbers] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [showBookingForm, setShowBookingForm] = useState(false);
@@ -23,19 +22,16 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
-  const [showSeatMap, setShowSeatMap] = useState(false);
-  const [takenSeats, setTakenSeats] = useState<number[]>([]);
-  const [selectedSeat, setSelectedSeat] = useState<number | null>(null);
+  // seat selection state removed
   const [queueEntries, setQueueEntries] = useState<any[]>([]);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  const [currentBookingId, setCurrentBookingId] = useState<string | null>(null); // Track booking for seat update
+  // current booking seat tracking removed
 
   useEffect(() => {
     loadAppointments();
-    loadDesigns();
     loadBarbersAndServices();
     loadQueueStatus();
   }, []);
@@ -109,17 +105,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
     }
   }
 
-  async function loadDesigns() {
-    try {
-      // Fetch designs from backend
-      const res = await fetch('http://localhost:5000/api/designs');
-      if (!res.ok) throw new Error('Failed to load designs');
-      const data = await res.json();
-      setDesigns(data || []);
-    } catch (error) {
-      console.error('Error loading designs:', error);
-    }
-  }
+  // designs feature removed
 
   async function handleCancelAppointment(appointmentId: string) {
     if (!confirm('Are you sure you want to cancel this appointment?')) return;
@@ -168,19 +154,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
     }
   }
 
-  function handleBookFromDesign(design: any) {
-    // Save pending booking to localStorage so BookingPage can prefill
-    const pending = {
-      barberId: design.barber?.id,
-      serviceId: design.service_id || null,
-    };
-    try {
-      localStorage.setItem('pendingBooking', JSON.stringify(pending));
-    } catch (e) {
-      console.warn('Could not save pending booking', e);
-    }
-    onNavigate('booking');
-  }
+  // Designs feature removed
 
   async function handleOpenBookingForm() {
     setShowBookingForm(true);
@@ -215,8 +189,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
           barber: mongoBarber._id,
           startTime: startDateTime.toISOString(),
           endTime: endDateTime.toISOString(),
-          status: 'pending',
-          seatNumber: selectedSeat,
+          status: 'pending'
         }),
       });
       if (!bookingResponse.ok) {
@@ -236,68 +209,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
     }
   }
 
-  function handleViewSeatAvailability() {
-    if (!selectedBarberId || !selectedDate) {
-      addNotification('Please select a barber and date to view seats', 'warning');
-      return;
-    }
-    openSeatMap(selectedBarberId, selectedDate);
-  }
-
-  async function openSeatMap(barberId: string, date: string, bookingId?: string) {
-    try {
-      setSelectedSeat(null);
-      setTakenSeats([]);
-      setCurrentBookingId(bookingId || null);
-      // call backend to fetch bookings for barber on that date and collect taken seat numbers
-      const res = await fetch(`http://localhost:5000/api/bookings/barber/${barberId}`);
-      if (!res.ok) throw new Error('Failed to load seats');
-      const bookings = await res.json();
-      const dayStart = new Date(date);
-      dayStart.setHours(0,0,0,0);
-      const dayEnd = new Date(date);
-      dayEnd.setHours(23,59,59,999);
-      // Find all taken seats for this date
-      const seats = bookings.filter((b: any) => b.startTime && new Date(b.startTime) >= dayStart && new Date(b.startTime) <= dayEnd && b.seatNumber).map((b: any) => b.seatNumber);
-      setTakenSeats(seats || []);
-
-      // Check if the current user already has a booking for this barber/date
-      const userBooking = bookings.find((b: any) =>
-        b.startTime &&
-        new Date(b.startTime) >= dayStart &&
-        new Date(b.startTime) <= dayEnd &&
-        (b.customerId === user?.id || b.customerEmail === user?.email || b.customerName === user?.email)
-      );
-      if (userBooking && userBooking.seatNumber) {
-        setSelectedSeat(userBooking.seatNumber);
-      }
-      setShowSeatMap(true);
-    } catch (err: any) {
-      addNotification(err.message || 'Failed to open seat map', 'error');
-    }
-  }
-
-  async function updateBookingSeat() {
-    if (!selectedSeat || !currentBookingId) {
-      addNotification('Please select a seat', 'warning');
-      return;
-    }
-    try {
-      const response = await fetch(`http://localhost:5000/api/bookings/${currentBookingId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seatNumber: selectedSeat }),
-      });
-      if (!response.ok) throw new Error('Failed to update seat');
-      addNotification(`Seat updated to #${selectedSeat}`, 'success');
-      setShowSeatMap(false);
-      setCurrentBookingId(null);
-      loadAppointments();
-    } catch (err: any) {
-      console.error('Update seat error:', err);
-      addNotification(err.message || 'Failed to update seat', 'error');
-    }
-  }
+  // seat-related functions removed
 
   async function handleJoinQueue(barberId: string) {
     try {
@@ -360,31 +272,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
           <div className="flex flex-wrap items-center gap-2 mb-4">
             <button onClick={handleOpenBookingForm} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors">New Booking</button>
             <button onClick={loadQueueStatus} className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Refresh Queue</button>
-            <select
-              value={selectedBarberId || ''}
-              onChange={(e) => setSelectedBarberId(e.target.value)}
-              className="p-2 border-2 border-amber-500 rounded-lg text-gray-900 bg-amber-50 min-w-[180px] focus:border-amber-600 focus:ring-2 focus:ring-amber-200 outline-none transition-colors"
-            >
-              <option value="">Barber for seats…</option>
-              {barbers.map((b) => (
-                <option key={b._id || b.id} value={b._id || b.id}>
-                  {b.profile?.full_name || b.shopName || b.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="p-2 border-2 border-amber-500 rounded-lg text-gray-900 bg-amber-50 focus:border-amber-600 focus:ring-2 focus:ring-amber-200 outline-none transition-colors"
-            />
-            <button
-              onClick={handleViewSeatAvailability}
-              className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
-              title="View seat availability for the selected barber and date"
-            >
-              View Seat Availability
-            </button>
+            {/* Seat availability feature removed */}
           </div>
           {upcomingAppointments.length === 0 ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center">
@@ -427,9 +315,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                       <Clock className="w-4 h-4" />
                       <span>{appointment.start_time}</span>
                     </div>
-                    {appointment.seatNumber && (
-                      <div className="text-sm text-gray-500">Seat: #{appointment.seatNumber}</div>
-                    )}
+                    {/* seat features removed */}
                   </div>
 
                   <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -443,20 +329,6 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                           Cancel
                         </button>
                       )}
-                      <button
-                        onClick={() => {
-                          const barberId = appointment.barber_id;
-                          if (barberId && appointment.appointment_date) {
-                            openSeatMap(barberId, appointment.appointment_date, appointment.id);
-                          } else {
-                            addNotification('Unable to load seats - barber or date missing', 'error');
-                          }
-                        }}
-                        className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
-                        title="View and update seat assignment"
-                      >
-                        View Seats
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -475,7 +347,10 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                 <select value={selectedBarberId || ''} onChange={(e) => setSelectedBarberId(e.target.value)} className="p-3 border rounded-lg text-gray-900 bg-white">
                   <option value="">Choose Barber</option>
                   {barbers.map((b) => (
-                    <option key={b._id || b.id} value={b._id || b.id}>{b.profile?.full_name || b.shopName || b.name}</option>
+                    <option key={b._id || b.id} value={b._id || b.id} disabled={b.is_available === false}>
+                      {b.profile?.full_name || b.shopName || b.name}{' '}
+                      {b.is_available === false ? '— Unavailable' : '— Available'}
+                    </option>
                   ))}
                 </select>
                 <label className="text-gray-900 font-medium">Service</label>
@@ -498,16 +373,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
                 <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="p-3 border rounded-lg text-gray-900 bg-white" />
                 <label className="text-gray-900 font-medium">Time</label>
                 <input type="time" value={selectedTime} onChange={(e) => setSelectedTime(e.target.value)} className="p-3 border rounded-lg text-gray-900 bg-white" />
-                <div className="flex items-center gap-2">
-                  <button 
-                    type="button" 
-                    onClick={handleViewSeatAvailability} 
-                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
-                  >
-                    View Seat Availability
-                  </button>
-                  {selectedSeat && <span className="text-sm font-medium text-amber-600">Selected seat: #{selectedSeat}</span>}
-                </div>
+                {/* seat availability removed from booking form */}
               </div>
               <div className="mt-4 flex gap-3 justify-end">
                 <button onClick={() => setShowBookingForm(false)} className="px-4 py-2 border rounded-lg text-gray-900 bg-white">Cancel</button>
@@ -523,78 +389,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
           </div>
         )}
 
-        {/* Seat map modal */}
-        {showSeatMap && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-300">
-              <h3 className="text-xl font-bold mb-4 text-gray-900">Seat Availability</h3>
-              {/* Legend */}
-              <div className="flex items-center gap-6 mb-3 text-sm text-gray-600">
-                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-emerald-400"></span> Available</div>
-                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-red-400"></span> Booked</div>
-                <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-amber-600"></span> Your Selection</div>
-              </div>
-              {/* Show current seat if already booked */}
-              {selectedSeat && takenSeats.includes(selectedSeat) && currentBookingId && (
-                <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
-                  <strong>Current seat:</strong> #{selectedSeat}. Select a different available seat to change your booking.
-                </div>
-              )}
-              <div className="grid grid-cols-8 gap-2 mb-4">
-                {Array.from({ length: 32 }).map((_, i) => {
-                  const seatNum = i + 1;
-                  const taken = takenSeats.includes(seatNum);
-                  const isCurrentUserSeat = selectedSeat === seatNum && taken && currentBookingId;
-                  // Only disable seats that are taken by other users
-                  const disabled = taken && !isCurrentUserSeat;
-                  return (
-                    <button
-                      key={seatNum}
-                      disabled={disabled}
-                      onClick={() => !disabled && setSelectedSeat(seatNum)}
-                      title={
-                        isCurrentUserSeat ? 'Your current seat' :
-                        taken ? 'Booked by someone else' : 
-                        selectedSeat === seatNum ? 'Selected' : 'Available'
-                      }
-                      className={`p-2 rounded-md text-sm border font-medium ${
-                        disabled
-                          ? 'bg-red-200 text-red-800 border-red-300 cursor-not-allowed'
-                          : selectedSeat === seatNum
-                            ? 'bg-amber-600 text-white border-amber-600'
-                            : isCurrentUserSeat
-                              ? 'bg-blue-100 text-blue-800 border-blue-300'
-                              : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-emerald-300'
-                      }`}
-                    >
-                      {seatNum}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => { setShowSeatMap(false); setCurrentBookingId(null); }} className="px-4 py-2 border rounded-lg text-gray-900 bg-white hover:bg-gray-50">Close</button>
-                {selectedSeat && (
-                  <button 
-                    onClick={() => { 
-                      if (currentBookingId) {
-                        // Update existing booking seat
-                        updateBookingSeat();
-                      } else {
-                        // Just select seat for new booking
-                        setShowSeatMap(false); 
-                        addNotification(`Seat #${selectedSeat} selected for booking`, 'success'); 
-                      }
-                    }} 
-                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700"
-                  >
-                    {currentBookingId ? 'Update Seat' : 'Confirm Seat'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Seat map modal removed */}
 
         {/* Queue status */}
         <div className="mt-8 mb-8">
@@ -665,34 +460,7 @@ export function CustomerDashboard({ onNavigate }: CustomerDashboardProps) {
           )}
         </div>
 
-        <div className="mt-12">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Designs</h2>
-          {designs.length === 0 ? (
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center">
-              <p className="text-gray-600 dark:text-gray-400">No designs available</p>
-            </div>
-          ) : (
-            <div className="grid md:grid-cols-3 gap-6">
-              {designs.map((design) => (
-                <div key={design.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg">
-                  {design.image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={design.image_url} alt={design.title || 'design'} className="w-full h-48 object-cover rounded-md mb-4" />
-                  ) : (
-                    <div className="w-full h-48 bg-gray-100 dark:bg-gray-700 rounded-md mb-4 flex items-center justify-center text-gray-400">No image</div>
-                  )}
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">{design.title || 'Untitled'}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{design.description}</p>
-                  <p className="text-xs text-gray-500 mb-3">By {design.barber?.profile?.full_name || 'Unknown'}</p>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleBookFromDesign(design)} className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700">Book from Design</button>
-                    <button onClick={() => window.open(design.image_url || '#', '_blank')} className="px-3 py-2 border rounded-lg">View</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Designs section removed */}
       </div>
 
       {showReviewModal && selectedAppointment && (

@@ -21,6 +21,7 @@ interface Booking {
   service?: string;
   servicePrice?: number;
   serviceDuration?: number;
+  serviceName?: string;
   createdAt?: string;
 }
 
@@ -46,11 +47,16 @@ export function PaymentPage({ onNavigate }: PaymentPageProps) {
 
   async function loadLatestAppointment() {
     try {
-      // Fetch latest pending booking for this user from backend
-      const response = await fetch(`http://localhost:5000/api/bookings?customerEmail=${encodeURIComponent(user?.email || '')}&status=pending`);
+      // Fetch bookings for this user from backend (controller expects `customerId` query param)
+      const queryKey = encodeURIComponent(user?.email || user?.id || '');
+      const response = await fetch(`http://localhost:5000/api/bookings?customerId=${queryKey}`);
       if (!response.ok) throw new Error('Failed to load appointment');
       const bookings = await response.json();
-      if (bookings && bookings.length > 0) {
+      // Prefer a pending booking if present
+      const pending = (bookings || []).find((b: any) => (b.status || '').toLowerCase() === 'pending');
+      if (pending) {
+        setAppointment(pending);
+      } else if (bookings && bookings.length > 0) {
         setAppointment(bookings[0]);
       } else {
         setAppointment(null);
@@ -92,7 +98,7 @@ export function PaymentPage({ onNavigate }: PaymentPageProps) {
   };
 
   const generateReceipt = () => {
-    const receiptContent = `
+  const receiptContent = `
 BarberSlot Receipt
 ==================
 
@@ -100,11 +106,11 @@ Date: ${new Date().toLocaleDateString()}
 Appointment ID: ${appointment?._id}
 
 Barber: ${appointment?.barber?.name}
-Service: ${appointment?.service}
+Service: ${appointment?.serviceName}
 Date: ${appointment?.startTime ? new Date(appointment.startTime).toLocaleDateString() : ''}
 Time: ${appointment?.startTime ? new Date(appointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
 
-Amount Paid: $${appointment?.servicePrice}
+Amount Paid: ₹${appointment?.servicePrice}
 
 Thank you for choosing BarberSlot!
     `.trim();
@@ -154,7 +160,7 @@ Thank you for choosing BarberSlot!
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Service:</span>
-                <span className="font-medium text-gray-900 dark:text-white">{appointment.service}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{appointment.serviceName}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600 dark:text-gray-400">Date:</span>
@@ -273,7 +279,7 @@ Thank you for choosing BarberSlot!
                   disabled={processing}
                   className="w-full py-3 bg-amber-600 text-white rounded-lg font-semibold hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {processing ? 'Processing...' : `Pay $${appointment.servicePrice}`}
+                  {processing ? 'Processing...' : `Pay ₹${appointment.servicePrice}`}
                 </button>
               </div>
             </form>
@@ -294,7 +300,7 @@ Thank you for choosing BarberSlot!
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Service</span>
-                  <span className="font-medium text-gray-900 dark:text-white">{appointment.service}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{appointment.serviceName}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600 dark:text-gray-400">Date</span>
@@ -312,7 +318,7 @@ Thank you for choosing BarberSlot!
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <div className="flex justify-between">
                     <span className="text-lg font-bold text-gray-900 dark:text-white">Total</span>
-                    <span className="text-2xl font-bold text-amber-600">${appointment.servicePrice}</span>
+                    <span className="text-2xl font-bold text-amber-600">₹{appointment.servicePrice}</span>
                   </div>
                 </div>
               </div>

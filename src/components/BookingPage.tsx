@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, DollarSign, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 
@@ -13,6 +13,7 @@ type Barber = {
   specialization?: string;
   rating?: number;
   experienceYears?: number;
+  is_available?: boolean;
 };
 
 type Service = {
@@ -39,6 +40,7 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [occupiedRanges, setOccupiedRanges] = useState<Array<{ start: number; end: number }>>([]);
 
   useEffect(() => {
     loadBarbers();
@@ -81,6 +83,30 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
     }
   }
 
+  // Default fallback services when backend doesn't provide any.
+  const fallbackServices: Service[] = [
+    { _id: 'svc-1', name: 'Men Haircut', description: 'Classic men haircut with styling', duration_minutes: 30, price: 299 },
+    { _id: 'svc-2', name: 'Women Haircut', description: 'Women haircut and styling', duration_minutes: 60, price: 599 },
+    { _id: 'svc-3', name: 'Kids Haircut (Under 12)', description: "Child's haircut with gentle styling", duration_minutes: 25, price: 199 },
+    { _id: 'svc-4', name: 'Beard Trim', description: 'Precision beard trimming and shaping', duration_minutes: 20, price: 199 },
+    { _id: 'svc-5', name: 'Hot Towel Shave', description: 'Traditional hot towel shave', duration_minutes: 30, price: 249 },
+    { _id: 'svc-6', name: 'Hair & Beard Combo', description: 'Haircut plus beard trim combo', duration_minutes: 45, price: 449 },
+    { _id: 'svc-7', name: 'Manicure', description: 'Hand manicure and grooming', duration_minutes: 45, price: 499 },
+    { _id: 'svc-8', name: 'Pedicure', description: 'Foot care and pedicure', duration_minutes: 50, price: 599 },
+    { _id: 'svc-9', name: 'Facial (Basic)', description: 'Cleansing facial for glowing skin', duration_minutes: 45, price: 699 },
+    { _id: 'svc-10', name: 'Bridal Makeup', description: 'Full bridal makeup package', duration_minutes: 240, price: 4999 },
+    { _id: 'svc-11', name: 'Party Makeup', description: 'Makeup for parties and events', duration_minutes: 90, price: 2499 },
+    { _id: 'svc-12', name: 'Spa Massage (60m)', description: 'Relaxing full body massage - 60 minutes', duration_minutes: 60, price: 999 },
+    { _id: 'svc-13', name: 'Spa Massage (30m)', description: 'Relaxing massage - 30 minutes', duration_minutes: 30, price: 599 },
+    { _id: 'svc-14', name: 'Hair Colouring', description: 'Hair coloring and touch-up', duration_minutes: 120, price: 1299 },
+    { _id: 'svc-15', name: 'Hair Spa/Treatment', description: 'Nourishing hair spa treatment', duration_minutes: 60, price: 799 },
+    { _id: 'svc-16', name: 'Threading', description: 'Facial threading for shaping', duration_minutes: 15, price: 199 },
+    { _id: 'svc-17', name: 'Head Massage', description: 'Therapeutic head and shoulder massage', duration_minutes: 30, price: 399 },
+    { _id: 'svc-18', name: 'Shampoo & Blow Dry', description: 'Shampoo, conditioning and blow dry', duration_minutes: 30, price: 299 },
+    { _id: 'svc-19', name: 'Kids Spa (Mini)', description: "Gentle kids' spa and grooming", duration_minutes: 30, price: 399 },
+    { _id: 'svc-20', name: 'Makeup Trial', description: 'Short makeup trial session', duration_minutes: 45, price: 999 },
+  ];
+
   async function loadServices() {
     try {
       console.log('🔄 Loading services from backend...');
@@ -93,14 +119,9 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
       const data = await response.json();
       console.log('✅ Services loaded:', data);
       
-      // If no services from backend, use fallback
+      // If no services from backend, use the top-level fallbackServices
       if (!data || data.length === 0) {
         console.log('⚠️ No services in database, using fallback services');
-        const fallbackServices = [
-          { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 350 },
-          { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 300 },
-          { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 550 },
-        ];
         setServices(fallbackServices);
         addNotification('Using default services. Please seed the database.', 'info');
       } else {
@@ -108,14 +129,48 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
       }
     } catch (error) {
       console.error('❌ Error loading services:', error);
-      // Use fallback services on error
-      const fallbackServices: Service[] = [
-        { _id: 'temp-1', name: 'Haircut', description: 'Professional haircut with styling', duration_minutes: 30, price: 350 },
-        { _id: 'temp-2', name: 'Beard Trim', description: 'Precision beard trimming', duration_minutes: 15, price: 300 },
-        { _id: 'temp-3', name: 'Hair & Beard Combo', description: 'Complete service', duration_minutes: 45, price: 550 },
-      ];
+      // Use top-level fallback services on error
       setServices(fallbackServices);
       addNotification('Backend not available. Using default services.', 'warning');
+    }
+  }
+
+  // Load booked slots for the selected barber and date
+  async function loadBookedSlots(barberId?: string, date?: Date) {
+    try {
+      setOccupiedRanges([]);
+      if (!barberId) return;
+      const ts = Date.now();
+      const res = await fetch(`http://localhost:5000/api/bookings/barber/${barberId}?t=${ts}`);
+      if (!res.ok) {
+        console.warn('Failed to fetch bookings for barber', res.status);
+        return;
+      }
+      const bookings = await res.json();
+
+      // Filter bookings for the chosen date and non-cancelled statuses
+      const targetDate = date || selectedDate || new Date();
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Only consider bookings that should block slots: pending or confirmed
+      const rawRanges = (bookings || [])
+        .filter((b: any) => b.startTime && ['pending', 'confirmed'].includes((b.status || '').toLowerCase()))
+        .map((b: any) => {
+          const start = new Date(b.startTime).getTime();
+          const end = b.endTime ? new Date(b.endTime).getTime() : (start + ((b.serviceDuration || 30) * 60000));
+          return { start, end };
+        }) as Array<{ start: number; end: number }>;
+
+      const ranges = rawRanges
+        .filter((r) => r.start <= endOfDay.getTime() && r.end >= startOfDay.getTime())
+        .map((r) => ({ start: Math.max(r.start, startOfDay.getTime()), end: Math.min(r.end, endOfDay.getTime()) }));
+
+      setOccupiedRanges(ranges);
+    } catch (err) {
+      console.error('Error loading booked slots:', err);
     }
   }
 
@@ -131,6 +186,15 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
 
     return slots;
   };
+
+  // Refresh occupied slots whenever selected barber/date/service changes
+  useEffect(() => {
+    if (selectedBarber) {
+      loadBookedSlots(selectedBarber._id, selectedDate);
+    } else {
+      setOccupiedRanges([]);
+    }
+  }, [selectedBarber, selectedDate, selectedService]);
 
   const handleBookAppointment = async () => {
     if (!selectedBarber || !selectedService || !selectedDate || !selectedTime) {
@@ -257,31 +321,50 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
                     No barbers available. Please try again later.
                   </div>
                 ) : (
-                  barbers.map((barber) => (
-                    <button
-                      key={barber._id}
-                      onClick={() => {
-                        setSelectedBarber(barber);
-                        setStep(2);
-                      }}
-                      className="text-left p-6 border-2 border-gray-200 dark:border-gray-700 rounded-xl hover:border-amber-600 hover:shadow-lg transition-all"
-                    >
-                      <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">
-                        {barber.name?.charAt(0) || 'B'}
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                        {barber.name}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                        {barber.specialization || barber.shopName || 'Professional Barber'}
-                      </p>
-                      <div className="flex items-center gap-2 text-sm text-amber-600">
-                        <span>⭐ {barber.rating?.toFixed(1) || '5.0'}</span>
-                        <span className="text-gray-400">•</span>
-                        <span>{barber.experienceYears || 5}+ years</span>
-                      </div>
-                    </button>
-                  ))
+                  barbers.map((barber) => {
+                    const available = barber.is_available !== false;
+                    return (
+                      <button
+                        key={barber._id}
+                        onClick={() => {
+                          if (!available) {
+                            addNotification('This barber is currently unavailable', 'warning');
+                            return;
+                          }
+                          setSelectedBarber(barber);
+                          setStep(2);
+                        }}
+                        className={`text-left p-6 border-2 rounded-xl transition-all ${
+                          available
+                            ? 'border-gray-200 dark:border-gray-700 hover:border-amber-600 hover:shadow-lg'
+                            : 'border-gray-200 dark:border-gray-700 opacity-60 cursor-not-allowed'
+                        }`}
+                        disabled={!available}
+                      >
+                        <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center text-white text-2xl font-bold mb-4">
+                          {barber.name?.charAt(0) || 'B'}
+                        </div>
+                        <div className="flex items-center justify-between mb-1">
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                            {barber.name}
+                          </h3>
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            available
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                          }`}>{available ? 'Available' : 'Unavailable'}</span>
+                        </div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                          {barber.specialization || barber.shopName || 'Professional Barber'}
+                        </p>
+                        <div className="flex items-center gap-2 text-sm text-amber-600">
+                          <span>⭐ {barber.rating?.toFixed(1) || '5.0'}</span>
+                          <span className="text-gray-400">•</span>
+                          <span>{barber.experienceYears || 5}+ years</span>
+                        </div>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -290,7 +373,7 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
           {step === 2 && (
             <div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
-                <DollarSign className="w-6 h-6 text-amber-600" />
+                <span className="text-amber-600 text-2xl font-bold">₹</span>
                 Choose a Service
               </h2>
               <div className="grid md:grid-cols-2 gap-4 mb-6">
@@ -311,7 +394,7 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
                       <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{service.name}</h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{service.description}</p>
                       <div className="flex items-center justify-between">
-                        <span className="text-amber-600 font-bold text-xl">${service.price}</span>
+                        <span className="text-amber-600 font-bold text-xl">₹{service.price}</span>
                         <span className="text-gray-500 text-sm">{service.duration_minutes} min</span>
                       </div>
                     </button>
@@ -382,17 +465,45 @@ export function BookingPage({ onNavigate }: BookingPageProps) {
               <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-3 mb-6">
                 {getAvailableTimeSlots().map((time) => {
                   const isSelected = selectedTime === time;
+                  // Compute slot start and end based on selectedDate and selectedService duration
+                  const [h, m] = time.split(':').map((x) => parseInt(x, 10));
+                  const slotStart = new Date(selectedDate);
+                  slotStart.setHours(h, m, 0, 0);
+                  const duration = (selectedService?.duration_minutes) || 30;
+                  const slotEnd = new Date(slotStart.getTime() + duration * 60000);
+
+                  const now = new Date();
+                  // If slot is in the past (for today), mark unavailable
+                  const isPast = selectedDate.toDateString() === new Date().toDateString() && slotEnd.getTime() <= now.getTime();
+
+                  const isTaken = occupiedRanges.some((r) => {
+                    // overlap check
+                    return slotStart.getTime() < r.end && slotEnd.getTime() > r.start;
+                  });
+
+                  const disabled = isTaken || isPast;
+
                   return (
                     <button
                       key={time}
-                      onClick={() => setSelectedTime(time)}
+                      onClick={() => {
+                        if (disabled) {
+                          addNotification('Time slot not available', 'warning');
+                          return;
+                        }
+                        setSelectedTime(time);
+                      }}
                       className={`p-3 rounded-lg border-2 transition-all font-medium ${
                         isSelected
                           ? 'border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-300'
+                          : disabled
+                          ? 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
                           : 'border-gray-200 dark:border-gray-700 hover:border-amber-600 text-gray-900 dark:text-white'
                       }`}
+                      disabled={disabled}
                     >
                       {time}
+                      {isTaken && <span className="ml-2 text-xs text-red-600">(booked)</span>}
                     </button>
                   );
                 })}

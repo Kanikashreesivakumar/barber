@@ -169,7 +169,7 @@ export function AdminDashboard() {
               </div>
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Revenue</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-white">${stats.totalRevenue.toFixed(2)}</p>
+git status --shortgit status --short                <p className="text-2xl font-bold text-gray-900 dark:text-white">₹{stats.totalRevenue.toFixed(2)}</p>
               </div>
             </div>
           </div>
@@ -259,7 +259,7 @@ export function AdminDashboard() {
                       </p>
                       <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-500">
                         <span>{service.duration_minutes} min</span>
-                        <span className="font-medium text-amber-600">${service.price}</span>
+                        <span className="font-medium text-amber-600">₹{service.price}</span>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -357,7 +357,7 @@ export function AdminDashboard() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Price ($)
+                  Price (₹)
                 </label>
                 <input
                   type="number"
